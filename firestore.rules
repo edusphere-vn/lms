@@ -1,0 +1,126 @@
+rules_version = '2';
+
+// Luat bao mat Edusphere LMS.
+// Vai tro nam trong custom claims cua Firebase Auth (do Worker gan, nguoi dung khong tu sua duoc):
+//   role: 'admin' | 'teacher' | 'student' | 'agency'
+//   teacherId (giao vien), sc (hoc vien), agencyId (agency)
+// Ghi chu: Admin SDK / Cloudflare Worker bo qua luat nay (dung cho tao tai khoan, chot luong).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helper ----------
+    function signedIn()  { return request.auth != null; }
+    function role()      { return request.auth.token.role; }
+    function isAdmin()   { return signedIn() && role() == 'admin'; }
+    function isTeacher() { return signedIn() && role() == 'teacher'; }
+    function isStudent() { return signedIn() && role() == 'student'; }
+    function isAgency()  { return signedIn() && role() == 'agency'; }
+    function me()        { return request.auth.uid; }
+    function notLocked(d) { return !('locked' in d) || d.locked == false; }
+    // Chi cho phep sua dung cac truong nay (so sanh truoc/sau khi ghi)
+    function onlyChanges(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    // ---------- cau hinh & danh muc: ai dang nhap cung doc, chi admin ghi ----------
+    match /config/{k}      { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /courses/{id}    { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /rubrics/{id}    { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /materials/{id}  { allow read: if isAdmin() || isTeacher(); allow write: if isAdmin(); }
+
+    // ---------- tai khoan ----------
+    // Nguoi dung doc ho so cua minh; chi duoc tu tat co "phai doi mat khau" sau khi da doi.
+    match /users/{uid} {
+      allow read: if isAdmin() || me() == uid;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (me() == uid && onlyChanges(['mustChangePassword']) && request.resource.data.mustChangePassword == false);
+    }
+
+    // ---------- agency / giao vien ----------
+    match /agencies/{id} {
+      allow read: if isAdmin() || (isAgency() && request.auth.token.agencyId == id);
+      allow write: if isAdmin();
+    }
+    // teachers chua don gia luong => chi admin va chinh giao vien do
+    match /teachers/{id} {
+      allow read: if isAdmin() || (isTeacher() && request.auth.token.teacherId == id);
+      allow write: if isAdmin();
+    }
+
+    // ---------- hoc vien ----------
+    // teacherIds: danh sach giao vien dang day hoc vien nay (admin cap nhat) de gioi han quyen xem.
+    match /students/{sc} {
+      allow read: if isAdmin()
+        || (isStudent() && request.auth.token.sc == sc)
+        || (isTeacher() && request.auth.token.teacherId in resource.data.teacherIds)
+        || (isAgency() && resource.data.agencyId == request.auth.token.agencyId);
+      allow write: if isAdmin();
+    }
+
+    // Goi hoc. Hoa don/da thu KHONG nam o day (nam o /billing) de giao vien khong thay.
+    match /enrollments/{id} {
+      allow read: if isAdmin()
+        || (isStudent() && resource.data.sc == request.auth.token.sc)
+        || (isTeacher() && resource.data.teacherId == request.auth.token.teacherId)
+        || (isAgency() && resource.data.agencyId == request.auth.token.agencyId);
+      allow write: if isAdmin();
+    }
+    match /billing/{id}  { allow read, write: if isAdmin(); }
+
+    // ---------- buoi hoc (lich + attendance + daily report) ----------
+    // Mot buoi co the co nhieu hoc vien (lop nhom): scs = danh sach SC, agencyIds = agency tuong ung.
+    // Truong locked do Worker dat khi chot luong thang; khi do chi Admin SDK sua duoc.
+    match /sessions/{id} {
+      allow read: if isAdmin()
+        || (isTeacher() && resource.data.teacherId == request.auth.token.teacherId)
+        || (isStudent() && request.auth.token.sc in resource.data.scs)
+        || (isAgency() && request.auth.token.agencyId in resource.data.agencyIds);
+      allow create, delete: if isAdmin() && notLocked(request.resource.data);
+      allow update: if (isAdmin() && notLocked(resource.data))
+        || (isTeacher() && notLocked(resource.data)
+            && resource.data.teacherId == request.auth.token.teacherId
+            && onlyChanges(['attendance', 'topic', 'lesson', 'vocabulary', 'homework', 'feedback', 'reportedAt']));
+    }
+
+    // ---------- evaluation cuoi moi RC ----------
+    match /evaluations/{id} {
+      allow read: if isAdmin()
+        || (isTeacher() && resource.data.teacherId == request.auth.token.teacherId)
+        || ((isStudent() && resource.data.sc == request.auth.token.sc
+             || isAgency() && resource.data.agencyId == request.auth.token.agencyId)
+            && resource.data.status == 'Approved');
+      allow create: if isAdmin()
+        || (isTeacher() && request.resource.data.teacherId == request.auth.token.teacherId
+            && request.resource.data.status in ['Draft', 'Submitted']);
+      allow update: if isAdmin()
+        || (isTeacher() && resource.data.teacherId == request.auth.token.teacherId
+            && resource.data.status != 'Approved'
+            && request.resource.data.status in ['Draft', 'Submitted']);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- report cong khai: moi hoc vien 1 doc, truy cap bang ma bi mat dai ----------
+    // Chi cho GET theo ma (khong cho liet ke). Ma do Worker tao, admin doi ma de vo hieu link cu.
+    match /public_reports/{token} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAdmin();
+    }
+
+    // ---------- luong, nhat ky ----------
+    match /payroll_runs/{id} {
+      allow read: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.token.teacherId);
+      allow write: if false;   // chi Worker (Admin SDK) ghi
+    }
+    match /audit_log/{id} {
+      allow read: if isAdmin();
+      allow create: if signedIn() && request.resource.data.uid == me();
+      allow update, delete: if false;
+    }
+
+    // Mac dinh: chan het
+    match /{document=**} { allow read, write: if false; }
+  }
+}

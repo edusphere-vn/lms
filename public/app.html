@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edusphere LMS</title>
+</head>
+<body>
+  <p id="who">Đang tải...</p>
+  <button id="out">Đăng xuất</button>
+  <script type="module">
+    import { auth, db } from "./assets/firebase.js";
+    import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+    import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+    onAuthStateChanged(auth, async (u) => {
+      if (!u) { location.href = "index.html"; return; }
+      const p = (await getDoc(doc(db, "users", u.uid))).data();
+      document.getElementById("who").textContent = `Xin chào ${p?.displayName || u.email} (vai trò: ${p?.role}). Giao diện ${p?.role} đang được xây dựng.`;
+    });
+    document.getElementById("out").onclick = () => signOut(auth);
+  </script>
+</body>
+</html>

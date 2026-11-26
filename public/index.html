@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edusphere LMS - Đăng nhập</title>
+  <style>
+    :root { --bg:#f6f7f9; --card:#fff; --ink:#1b1f24; --muted:#5b6672; --accent:#1a56db; --err:#b42318; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#14171a; --card:#1d2227; --ink:#eef1f4; --muted:#9aa6b2; --accent:#6ea0ff; --err:#ff8a80; } }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, sans-serif; padding:16px; }
+    main { width:100%; max-width:380px; background:var(--card); border-radius:12px; padding:28px; box-shadow:0 1px 3px rgba(0,0,0,.12); }
+    h1 { font-size:20px; margin:0 0 4px; }
+    p.sub { color:var(--muted); margin:0 0 20px; font-size:14px; }
+    label { display:block; font-size:14px; margin:12px 0 4px; }
+    input { width:100%; padding:10px 12px; border:1px solid #c5ccd3; border-radius:8px; font:inherit; background:transparent; color:inherit; }
+    button { width:100%; margin-top:20px; padding:11px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+    .msg { color:var(--err); min-height:1.4em; font-size:14px; margin-top:12px; }
+  </style>
+</head>
+<body>
+<main>
+  <section id="login">
+    <h1>Edusphere LMS</h1>
+    <p class="sub">Đăng nhập bằng tên đăng nhập do admin cấp.</p>
+    <form id="loginForm">
+      <label for="username">Tên đăng nhập</label>
+      <input id="username" autocomplete="username" required>
+      <label for="password">Mật khẩu</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Đăng nhập</button>
+      <div id="loginMsg" class="msg" role="alert"></div>
+    </form>
+  </section>
+  <section id="change" hidden>
+    <h1>Đổi mật khẩu</h1>
+    <p class="sub">Đây là lần đăng nhập đầu tiên. Hãy đặt mật khẩu mới (ít nhất 8 ký tự).</p>
+    <form id="changeForm">
+      <label for="newPassword">Mật khẩu moi</label>
+      <input id="newPassword" type="password" autocomplete="new-password" required>
+      <label for="newPassword2">Nhập lại mật khẩu mới</label>
+      <input id="newPassword2" type="password" autocomplete="new-password" required>
+      <button type="submit">Lưu mật khẩu</button>
+      <div id="changeMsg" class="msg" role="alert"></div>
+    </form>
+  </section>
+</main>
+<script type="module" src="assets/login.js"></script>
+</body>
+</html>

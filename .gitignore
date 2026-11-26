@@ -1,0 +1,9 @@
+node_modules/
+.firebase/
+.wrangler/
+.dev.vars
+*.log
+.DS_Store
+# Khong bao gio commit khoa bi mat:
+serviceAccount*.json
+*-adminsdk-*.json

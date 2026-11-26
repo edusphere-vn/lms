@@ -9,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 const show = (id) => { for (const s of ["login", "change"]) $(s).hidden = s !== id; };
 const say = (id, msg) => { $(id).textContent = msg || ""; };
 
-const HOME = { admin: "app.html#admin", teacher: "app.html#teacher", student: "app.html#student", agency: "app.html#agency" };
+const HOME = { admin: "admin.html", teacher: "app.html#teacher", student: "app.html#student", agency: "app.html#agency" };
 
 async function afterLogin(user) {
   const snap = await getDoc(doc(db, "users", user.uid));

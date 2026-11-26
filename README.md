@@ -10,6 +10,7 @@ Firebase (Auth + Firestore, gói Spark), Cloudflare Pages/Worker, GitHub. Tên m
 - `tests/` kiểm thử luật bảo mật bằng Firestore emulator (`npm run test:rules`, cần Java).
 - `worker/` Cloudflare Worker (tạo tài khoản, reset mật khẩu; chỉ admin gọi được). Kiểm thử: `npm run test:worker`.
 - `scripts/bootstrap-admin.mjs` tạo tài khoản admin đầu tiên.
+- `public/admin.html` trang admin: quản lý giáo viên, học viên, agency, khóa học; tạo tài khoản và đặt lại mật khẩu (gọi Worker); nạp cấu hình mặc định. Kiểm thử trình duyệt: `npm run test:e2e`.
 - `docs/DATA_MODEL.md` mô hình dữ liệu và quy tắc nghiệp vụ.
 
 ## Thiết lập lần đầu

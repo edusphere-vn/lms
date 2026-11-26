@@ -15,6 +15,7 @@
     onAuthStateChanged(auth, async (u) => {
       if (!u) { location.href = "index.html"; return; }
       const p = (await getDoc(doc(db, "users", u.uid))).data();
+      if (p?.role === "admin") { location.replace("admin.html"); return; }
       document.getElementById("who").textContent = `Xin chào ${p?.displayName || u.email} (vai trò: ${p?.role}). Giao diện ${p?.role} đang được xây dựng.`;
     });
     document.getElementById("out").onclick = () => signOut(auth);

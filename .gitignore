@@ -7,3 +7,4 @@ node_modules/
 # Khong bao gio commit khoa bi mat:
 serviceAccount*.json
 *-adminsdk-*.json
+.cache/

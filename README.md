@@ -8,6 +8,7 @@ Firebase (Auth + Firestore, gói Spark), Cloudflare Pages/Worker, GitHub. Tên m
 - `public/` giao diện web tĩnh (đăng nhập, khung ứng dụng). Triển khai bằng Cloudflare Pages, thư mục xuất bản là `public`, không cần build.
 - `firestore.rules` luật bảo mật theo vai trò (admin, teacher, student, agency).
 - `tests/` kiểm thử luật bảo mật bằng Firestore emulator (`npm run test:rules`, cần Java).
+- `worker/` Cloudflare Worker (tạo tài khoản, reset mật khẩu; chỉ admin gọi được). Kiểm thử: `npm run test:worker`.
 - `scripts/bootstrap-admin.mjs` tạo tài khoản admin đầu tiên.
 - `docs/DATA_MODEL.md` mô hình dữ liệu và quy tắc nghiệp vụ.
 
@@ -25,3 +26,10 @@ Người dùng đăng nhập bằng tên đăng nhập + mật khẩu do admin c
 ## Lộ trình
 
 Giai đoạn 0 (đang làm): khung repo, luật bảo mật, đăng nhập, nhập dữ liệu 2026. Xem blueprint để biết các giai đoạn sau.
+
+## Triển khai Worker
+
+1. Firebase console > Project settings > Service accounts > Generate new private key (file JSON, chỉ để trên máy, không commit).
+2. `cd worker && npx wrangler login`, rồi `npx wrangler secret put FIREBASE_SERVICE_ACCOUNT` và dán toàn bộ nội dung file JSON.
+3. Sửa `ALLOWED_ORIGINS` trong `worker/wrangler.toml` thành domain thật của giao diện (lms.edusphere.vn và địa chỉ `*.pages.dev`), rồi `npx wrangler deploy`.
+4. Worker xác minh ID token Firebase của người gọi (claim `role = admin`), tạo user với custom claims (role, teacherId/sc/agencyId), ghi `users/{uid}` và đặt `mustChangePassword`.

@@ -1,0 +1,11 @@
+name = "edusphere-lms-api"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+PROJECT_ID = "esvn-lms"
+# Cac origin duoc phep goi API (cach nhau dau phay). Them domain Pages that cua Peter vao day.
+ALLOWED_ORIGINS = "https://lms.edusphere.vn"
+
+# Bi mat (KHONG ghi vao file nay): npx wrangler secret put FIREBASE_SERVICE_ACCOUNT
+# -> dan toan bo noi dung file JSON khoa service account.

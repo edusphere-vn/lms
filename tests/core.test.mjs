@@ -214,3 +214,31 @@ test("tao buoi hoc tuan: thu trong tuan, ghep hoc vien, lop nhom, bo qua buoi da
   assert.ok(r.unresolved.some((u) => u.name === "Nguoi La" && u.reason === "missing") && r.unresolved.some((u) => u.name === "Trung" && u.reason === "ambiguous"));
   assert.deepEqual([...SG.dateRange("2026-11-29", "2026-12-01")].map((d) => d.iso + ":" + d.col), ["2026-11-29:6", "2026-11-30:0", "2026-12-01:1"]);
 });
+
+import * as RC from "../public/assets/rc-core.js";
+test("RC: Present/Absent tinh, Cancelled khong, 10 buoi = 1 RC, xep theo ngay gio qua nhieu giao vien", () => {
+  const ss = [];
+  for (let i = 1; i <= 11; i++) ss.push({ id: `a${i}`, date: `2026-01-${String(i).padStart(2, "0")}`, time: "08:00", scs: ["S1"], attendance: { S1: i === 3 ? "Cancelled" : i === 4 ? "Absent" : "Present" }, teacherId: i % 2 ? "T1" : "T2" });
+  const { updates } = RC.recomputeRc(ss), by = Object.fromEntries(updates.map((u) => [u.id, u.data]));
+  assert.equal(by.a3, undefined);                                   // buoi huy khong co so (khong can cap nhat)
+  assert.deepEqual([by.a1.rcNo, by.a1.rcSeq], [1, 1]);
+  assert.deepEqual([by.a4.rcNo, by.a4.rcSeq], [1, 3]);              // vang van tinh, huy khong chen vao
+  assert.deepEqual([by.a10.rcNo, by.a10.rcSeq], [1, 9]);
+  assert.deepEqual([by.a11.rcNo, by.a11.rcSeq], [1, 10]);
+  ss.push({ id: "b", date: "2026-02-01", time: "08:00", scs: ["S1"], attendance: { S1: "Present" } });
+  const u2 = RC.recomputeRc(ss.map((s) => ({ ...s, ...(by[s.id] || {}) }))).updates;
+  assert.deepEqual(u2.map((u) => [u.id, u.data.rcNo, u.data.rcSeq]), [["b", 2, 1]]);   // chi buoi moi thay doi
+});
+test("RC: lop nhom moi hoc vien co so rieng; buoi da chot luong khong bi sua", () => {
+  const ss = [{ id: "g1", date: "2026-01-01", time: "09:00", scs: ["A", "B"], attendance: { A: "Present", B: "Cancelled" } }, { id: "g2", date: "2026-01-02", time: "09:00", scs: ["B"], attendance: { B: "Present" }, locked: true }];
+  const r = RC.recomputeRc(ss);
+  assert.deepEqual(r.updates[0].data.rc, { A: { no: 1, seq: 1 } });
+  assert.equal(r.skippedLocked, 1);
+});
+test("hoc bu: tim buoi huy chua bu, tao buoi bu co makeupOf va het cho sau khi co", () => {
+  const ss = [{ id: "c1", date: "2026-01-05", time: "10:00", minutes: 50, scs: ["S1"], attendance: { S1: "Cancelled" }, teacherId: "T1", agencyIds: ["X"] }];
+  const p = RC.pendingMakeups(ss); assert.equal(p.length, 1);
+  const m = RC.makeupSession(p[0], { date: "2026-01-08", time: "11:00", teacherId: "T2" });
+  assert.equal(m.data.makeupOf, "c1"); assert.equal(m.data.minutes, 50); assert.deepEqual(m.data.scs, ["S1"]);
+  assert.equal(RC.pendingMakeups([...ss, { id: m.id, ...m.data }]).length, 0);
+});

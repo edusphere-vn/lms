@@ -1,7 +1,7 @@
 // Lưới lịch tuần chỉ xem (giống lưới của admin nhưng không sửa được). cells = { "<cot>_<HHMM>": {t, k} }.
 import { ROWS, COLS, DAYS, rowTime, cellKey, normName } from "./grid-core.js";
 
-export function renderGridView(cells, { h }) {
+export function renderGridView(cells, { h, onPick = null }) {
   // gop cac o lien tiep cung ten thanh mot khoi (buoi 50 phut = 2 o)
   const at = (r, c) => cells[cellKey(r, c)] || null, skip = new Set(), span = new Map();
   for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
@@ -16,7 +16,7 @@ export function renderGridView(cells, { h }) {
       if (skip.has(`${r}_${c}`)) continue;
       const x = at(r, c), n = span.get(`${r}_${c}`) || 1;
       const cls = !x ? "empty-slot" : x.k === "na" ? "na" : x.k === "res" ? "res" : x.t ? "esl" : "empty-slot";
-      tds.push(h("td", { class: `cell ${cls}`, rowspan: n > 1 ? String(n) : null, title: x?.t || (x?.k === "na" ? "Không rảnh" : x?.k === "res" ? "Giữ chỗ" : "") }, x?.t || (x?.k === "res" ? "Giữ chỗ" : "")));
+      tds.push(h("td", { class: `cell ${cls}${onPick && cls === "esl" ? " clickable" : ""}`, rowspan: n > 1 ? String(n) : null, onclick: onPick && cls === "esl" ? () => onPick(x.t) : null, title: x?.t || (x?.k === "na" ? "Không rảnh" : x?.k === "res" ? "Giữ chỗ" : "") }, x?.t || (x?.k === "res" ? "Giữ chỗ" : "")));
     }
     body.push(h("tr", {}, tds));
   }

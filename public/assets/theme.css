@@ -67,3 +67,50 @@ table.grid thead th { position:sticky; top:0; background:#F8FAFC; z-index:2; tex
 table.grid th.tm { width:58px; color:var(--muted); font-weight:500; text-align:center; position:sticky; left:0; background:#F8FAFC; z-index:1; }
 table.grid td.cell.esl { background:#9fc5e8; color:#0b2540; } table.grid td.cell.na { background:#980000; color:#fff; } table.grid td.cell.res { background:#ffe94d; color:#3a3000; }
 table.grid.ro td.cell { white-space:normal; line-height:1.25; vertical-align:middle; }
+/* ---- giao vien: the hoc vien, dong buoi hoc, ho so lop ---- */
+.sgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(270px, 1fr)); gap:16px; }
+.scard { border:1px solid var(--line); border-radius:14px; padding:16px; background:#fff; display:flex; flex-direction:column; gap:8px; transition:box-shadow .15s; }
+.scard:hover { box-shadow:0 6px 16px rgba(59,130,246,.15); border-color:#BFDBFE; }
+.shead { display:flex; gap:12px; align-items:center; }
+.sname { font-weight:600; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.avatar { width:44px; height:44px; flex:none; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; }
+.rcline { display:flex; justify-content:space-between; font-size:14px; margin-top:4px; }
+.sact { display:flex; gap:8px; align-items:center; margin-top:auto; padding-top:6px; }
+.btnlink { padding:8px 14px; border:1px solid var(--line); border-radius:10px; color:var(--accent); text-decoration:none; font-weight:600; font-size:14px; }
+.todaylist { display:flex; flex-direction:column; gap:8px; }
+.todayitem { display:flex; gap:14px; align-items:center; padding:10px 14px; background:#F8FAFC; border:1px solid var(--line); border-radius:12px; cursor:pointer; font:inherit; text-align:left; color:var(--ink); }
+.todayitem span { flex:1; } .todayitem:hover { background:#EFF6FF; }
+.daycard h3 { margin:0 0 10px; font-size:15px; color:var(--accent); }
+.srow { display:flex; gap:14px; align-items:center; padding:10px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+.srow:first-of-type { border-top:0; }
+.stime { width:110px; font-weight:600; } .sbody { flex:1; min-width:180px; } .sbody .tag { margin-left:6px; }
+.linkbtn { background:none; border:0; padding:0; font:inherit; font-weight:600; font-size:15px; color:var(--accent); cursor:pointer; text-align:left; }
+.linkbtn:hover { text-decoration:underline; }
+table.grid.ro td.cell.clickable { cursor:pointer; } table.grid.ro td.cell.clickable:hover { background:#7fb0e0; }
+tfoot td { background:#F8FAFC; border-top:2px solid var(--line); }
+dialog.dossier { color:var(--ink); width:min(960px, calc(100vw - 24px)); max-height:calc(100vh - 24px); padding:0; border:0; border-radius:16px; background:var(--bg); overflow:hidden; }
+dialog.dossier[open] { display:flex; flex-direction:column; }
+dialog.dossier::backdrop { background:rgba(15,23,42,.5); }
+.dhead { display:flex; gap:14px; align-items:center; padding:16px 20px; background:#fff; border-bottom:1px solid var(--line); }
+.dtabs { display:flex; gap:6px; padding:10px 20px 0; background:#fff; overflow-x:auto; border-bottom:1px solid var(--line); }
+.dtabs button { border:0; background:transparent; padding:9px 16px; border-radius:10px 10px 0 0; font:inherit; font-weight:600; color:var(--muted); cursor:pointer; white-space:nowrap; }
+.dtabs button[aria-current="true"] { background:var(--accent); color:#fff; }
+.dbody { padding:18px 20px 24px; overflow-y:auto; }
+.kv { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; background:#fff; border-radius:12px; padding:14px 16px; }
+.kv .k { display:block; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; }
+.chip { border:0; border-radius:8px; padding:5px 10px; font:inherit; font-size:13px; cursor:pointer; }
+.chip.ok { background:#D1FAE5; color:#065F46; } .chip.warn { background:#FEF3C7; color:#92400E; }
+.card.soft { background:#EFF6FF; box-shadow:none; margin-top:12px; }
+.dbody .session { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+.dbody .session.done { border-left:4px solid var(--s); }
+.dbody .session header { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+.dbody .session header select { width:auto; min-width:190px; }
+.dbody .fld label { display:block; font-size:13px; color:var(--muted); margin:8px 0 3px; }
+.dbody .row { display:flex; gap:10px; justify-content:flex-end; align-items:center; margin-top:10px; }
+.tag { font-size:12px; padding:1px 8px; border:1px solid var(--line); border-radius:999px; color:var(--muted); }
+
+.dhead, .dtabs { flex:none; } .dtabs { padding-bottom:0; } .dtabs button { flex:none; }
+table { border-collapse:collapse; width:100%; } th, td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
+.wrap { overflow-x:auto; background:#fff; }
+tfoot td, tr:last-child td { }

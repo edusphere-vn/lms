@@ -41,6 +41,10 @@ const ENTITIES = {
     { k: "status", label: "Trạng thái", type: "select", options: STATUS } ] },
   agencies: { title: "Agency", coll: "agencies", id: "agencyId", role: "agency", account: true, fields: [
     { k: "agencyId", label: "Mã agency", req: true }, { k: "name", label: "Tên", req: true }, { k: "contact", label: "Liên hệ" } ] },
+  materials: { title: "Tài liệu", coll: "materials", id: "materialId", fields: [
+    { k: "materialId", label: "Mã tài liệu", req: true }, { k: "title", label: "Tên tài liệu", req: true }, { k: "url", label: "Link (https://...)", req: true },
+    { k: "courseId", label: "Khóa học", type: "select", options: () => [["", "Mọi khóa"], ...(cache.courses || []).map((c) => [c.courseId, c.name || c.courseId])] },
+    { k: "level", label: "Cấp độ / chủ đề" }, { k: "forStudents", label: "Học viên được xem", type: "bool" }, { k: "note", label: "Ghi chú" } ] },
   courses: { title: "Khóa học", coll: "courses", id: "courseId", fields: [
     { k: "courseId", label: "Mã khóa", req: true }, { k: "name", label: "Tên", req: true },
     { k: "scale", label: "Thang điểm", type: "select", options: [["CEFR100", "CEFR (100 điểm)"], ["IELTS_BAND", "IELTS band"]] },
@@ -80,7 +84,7 @@ async function render() {
   if (current === "payroll") return renderPayroll(main, { db, h, alive: () => my === renderSeq });
   if (current === "reports") return renderReports(main, { db, h, alive: () => my === renderSeq });
   if (current === "schedule") return renderSchedule(main, { db, h, dlg, reload: render, alive: () => my === renderSeq });
-  await Promise.all([load(ent.coll), ent.coll === "students" ? Promise.all([load("agencies"), load("teachers")]) : null, ent.account ? loadAccounts() : null]);
+  await Promise.all([load(ent.coll), ent.coll === "students" ? Promise.all([load("agencies"), load("teachers")]) : null, ent.coll === "materials" ? load("courses") : null, ent.account ? loadAccounts() : null]);
   if (my !== renderSeq) return;
   const cols = ent.fields.filter((f) => !f.hide);
   const rows = cache[ent.coll];
@@ -148,6 +152,7 @@ function openForm(ent, row) {
       else if (f.type === "number") { if (el.value !== "") data[f.k] = Number(el.value); }
       else if (el.value !== "" || editing) data[f.k] = el.value.trim();
     }
+    if (ent.coll === "materials" && !/^https:\/\/\S+$/.test(data.url || "")) { msg.textContent = "Link phải bắt đầu bằng https:// và không có khoảng trắng."; return; }
     const id = String(data[ent.id] ?? row?.[ent.id] ?? "").trim();
     if (!id || /[\/\s]/.test(id)) { msg.textContent = "Mã không được để trống, không chứa khoảng trắng hoặc dấu /."; return; }
     if (!editing && cache[ent.coll].some((r) => r[ent.id] === id)) { msg.textContent = "Mã này đã tồn tại."; return; }

@@ -1,5 +1,6 @@
 // Giao diện giáo viên: xem buổi học trong tuần, điểm danh và nhập báo cáo từng buổi.
 import { collection, getDocs, getDoc, doc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { API_BASE } from "./firebase.js";
 import { DAYS, rowTime, hhmm, START_MIN, STEP, normName } from "./grid-core.js";
 import { runsOf } from "./session-gen-core.js";
 import { computePayroll, monthRange } from "./payroll-core.js";
@@ -27,6 +28,7 @@ export async function startTeacher({ db, profile, main, user }) {
   // lich co dinh hang tuan, don gia (de tinh luong tam) - khong bat buoc, loi thi bo qua
   const [schedDoc, teacherDoc, cfgSnap] = await Promise.all([getDoc(doc(db, "schedule", tid)).catch(() => null), getDoc(doc(db, "teachers", tid)).catch(() => null), getDocs(collection(db, "config")).catch(() => ({ docs: [] }))]);
   const cells = schedDoc?.data?.()?.cells || {}, config = Object.fromEntries(cfgSnap.docs.map((d) => [d.id, d.data()])), me = { id: tid, name: teacherDoc?.data?.()?.name || tid, ...(teacherDoc?.data?.() || {}) };
+  const materials = (await getDocs(collection(db, "materials")).catch(() => ({ docs: [] }))).docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => /^https:\/\/\S+$/.test(m.url || "")).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
   const students = Object.fromEntries(sSnap.docs.map((d) => [d.id, d.data()]));
   const sessions = eSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const q = new URLSearchParams(location.search).get("week");   // ?week=2026-11-23 de mo thang tuan khac
@@ -69,7 +71,19 @@ export async function startTeacher({ db, profile, main, user }) {
     return h("div", { class: "overview" },
       h("details", { id: "fixedSchedule" }, h("summary", {}, `Lịch cố định hằng tuần (${runs.length} ca)`),
         h("table", {}, h("tbody", {}, DAYS.map((d, c) => { const r = runs.filter((x) => x.col === c).sort((a, b) => a.row - b.row); return r.length ? h("tr", {}, h("td", {}, h("strong", {}, d)), h("td", {}, r.map((x) => `${rowTime(x.row)}-${hhmm(START_MIN + (x.row + x.rows) * STEP)} ${x.text}`).join(" · "))) : null; })))),
+      materials.length ? h("details", { id: "teacherMaterials" }, h("summary", {}, `Tài liệu giảng dạy (${materials.length})`), h("ul", {}, materials.map((m) => h("li", {}, h("a", { href: m.url, target: "_blank", rel: "noopener noreferrer" }, m.title || m.id), m.courseId ? ` · ${m.courseId}` : "", m.level ? ` · ${m.level}` : "")))) : null,
       h("p", { class: "note", id: "payHint" }, pay ? `Tạm tính tháng ${ym.slice(5)}/${ym.slice(0, 4)}: ${pay.total.toLocaleString("vi-VN")} (${pay.present} buổi có mặt, ${pay.absent} vắng, ${pay.cancelled} hủy` + (pay.unreported ? `, ${pay.unreported} chưa điểm danh` : "") + "). Số chính thức do admin chốt cuối kỳ." : `Tháng ${ym.slice(5)}/${ym.slice(0, 4)} chưa có buổi học.`));
+  }
+
+  // Sau khi luu, nho Worker tinh lai so RC (can lich su cac giao vien khac nen giao vien khong tu tinh duoc). Loi thi bo qua: admin van co nut "RC va hoc bu".
+  async function refreshRc(s, el) {
+    if (!user) return;
+    try {
+      const res = await fetch(API_BASE + "/api/sessions/recompute-rc", { method: "POST", headers: { authorization: `Bearer ${await user.getIdToken()}`, "content-type": "application/json" }, body: JSON.stringify({ sessionId: s.id }) });
+      if (!res.ok) return; const j = await res.json(); s.rc = j.rc; s.rcNo = j.rcNo; s.rcSeq = j.rcSeq;
+      el.querySelector(".tag.rc")?.remove();
+      if (j.rcNo) el.querySelector("header").append(h("span", { class: "tag rc" }, `RC${j.rcNo} · buổi ${j.rcSeq}`));
+    } catch { /* khong sao */ }
   }
 
   function card(s) {
@@ -77,7 +91,7 @@ export async function startTeacher({ db, profile, main, user }) {
     const field = (label, key, ph) => [h("label", {}, label), h("textarea", { "data-f": key, rows: "3", placeholder: ph, disabled: locked }, s[key] || "")];
     const el = h("article", { class: "session" + (s.reportedAt ? " done" : ""), "data-id": s.id, "data-names": normName(s.scs.map((sc) => students[sc]?.fullName || sc).join(" ") + " " + s.scs.join(" ")) },
       h("header", {}, h("strong", {}, s.time ? `${s.time}-${endTime(s.time, s.minutes || 25)}` : "Chưa rõ giờ"), h("span", { class: "note" }, `${s.minutes || 25} phút`),
-        s.rcNo ? h("span", { class: "tag" }, `RC${s.rcNo}${s.rcSeq ? " · buổi " + s.rcSeq : ""}`) : null, locked ? h("span", { class: "tag" }, "Đã chốt lương") : null),
+        s.rcNo ? h("span", { class: "tag rc" }, `RC${s.rcNo}${s.rcSeq ? " · buổi " + s.rcSeq : ""}`) : null, locked ? h("span", { class: "tag" }, "Đã chốt lương") : null),
       s.scs.map((sc) => h("div", { class: "stu" }, h("span", {}, students[sc]?.fullName || sc),
         students[sc]?.meetLink ? h("a", { href: students[sc].meetLink, target: "_blank", rel: "noopener noreferrer" }, "Vào lớp") : null,
         h("select", { "data-sc": sc, disabled: locked, onchange: (e) => { att[sc] = e.target.value; } }, STATUSES.map(([v, l]) => h("option", { value: v, selected: v === (att[sc] || "") }, l))))),
@@ -86,7 +100,7 @@ export async function startTeacher({ db, profile, main, user }) {
         e.target.disabled = true; msg.className = "note"; msg.textContent = "Đang lưu...";
         const data = { attendance: att, reportedAt: Date.now() };
         for (const f of ["topic", "lesson", "feedback"]) data[f] = el.querySelector(`[data-f=${f}]`).value.trim();
-        try { await updateDoc(doc(db, "sessions", s.id), data); Object.assign(s, data); el.classList.add("done"); document.getElementById("weekCount").textContent = countText(); msg.textContent = `Đã lưu ${new Date(data.reportedAt).toLocaleString("vi-VN")}`; }
+        try { await updateDoc(doc(db, "sessions", s.id), data); Object.assign(s, data); el.classList.add("done"); document.getElementById("weekCount").textContent = countText(); msg.textContent = `Đã lưu ${new Date(data.reportedAt).toLocaleString("vi-VN")}`; refreshRc(s, el); }
         catch (err) { msg.className = "msg err"; msg.textContent = "Không lưu được: " + (err.code || err.message); }
         e.target.disabled = false; } }, "Lưu")));
     return el;

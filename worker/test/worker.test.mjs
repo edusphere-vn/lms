@@ -81,3 +81,33 @@ test("xoa tai khoan: xoa Auth + users doc, khong cho tu xoa, chap nhan tai khoan
   assert.equal((await call("/api/users/delete", { uid: "gone1234" })).status, 200);
   assert.equal((await call("/api/users/delete", { uid: "abc123xyz" }, { token: idToken({ role: "teacher" }) })).status, 403);
 });
+
+import { readFileSync } from "node:fs";
+test("rc-core trong worker giong ban o public/assets", () => {
+  assert.equal(readFileSync(new URL("../src/rc-core.js", import.meta.url), "utf8"), readFileSync(new URL("../../public/assets/rc-core.js", import.meta.url), "utf8"));
+});
+test("giao vien goi tinh lai RC: chi buoi cua minh, ghi so RC cho hoc vien", async () => {
+  const fs = (o) => ({ fields: Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v])) });
+  const S = (id, date, att, extra = {}) => ({ name: `projects/${PID}/databases/(default)/documents/sessions/${id}`, fields: { date: { stringValue: date }, teacherId: { stringValue: extra.t || "T1" }, scs: { arrayValue: { values: [{ stringValue: "A" }] } }, attendance: { mapValue: { fields: { A: { stringValue: att } } } } } });
+  const docs = { A_d1: S("A_d1", "2026-01-01", "Present"), A_d2: S("A_d2", "2026-01-02", "Cancelled"), A_d3: S("A_d3", "2026-01-03", "Absent"), B_d9: S("B_d9", "2026-01-04", "Present", { t: "T9" }) };
+  const prev = globalThis.fetch, patches = [];
+  globalThis.fetch = async (url, init = {}) => {
+    url = String(url);
+    const m = url.match(/\/documents\/sessions\/([^?]+)(\?.*)?$/);
+    if (m && (init.method || "GET") === "GET") return new Response(JSON.stringify(docs[m[1]]), { status: 200 });
+    if (m && init.method === "PATCH") { patches.push({ id: m[1], url, body: JSON.parse(init.body) }); return new Response("{}", { status: 200 }); }
+    if (url.endsWith(":runQuery")) return new Response(JSON.stringify(["A_d1", "A_d2", "A_d3"].map((k) => ({ document: docs[k] }))), { status: 200 });
+    return prev(url, init);
+  };
+  try {
+    const t = idToken({ role: "teacher", teacherId: "T1" });
+    const r = await call("/api/sessions/recompute-rc", { sessionId: "A_d3" }, { token: t });
+    assert.equal(r.status, 200); const j = await r.json();
+    assert.deepEqual([j.rcNo, j.rcSeq], [1, 2]);
+    assert.deepEqual(patches.map((p) => p.id).sort(), ["A_d1", "A_d3"]);           // s2 (Cancelled) khong co so nen khong doi
+    assert.equal(patches.find((p) => p.id === "A_d3").body.fields.rcSeq.integerValue, "2");
+    assert.ok(patches[0].url.includes("updateMask.fieldPaths=rc"));
+    assert.equal((await call("/api/sessions/recompute-rc", { sessionId: "B_d9" }, { token: t })).status, 403);   // buoi cua giao vien khac
+    assert.equal((await call("/api/users/reset", { uid: "u", password: "12345678" }, { token: t })).status, 403);   // route admin van chan giao vien
+  } finally { globalThis.fetch = prev; }
+});

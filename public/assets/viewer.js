@@ -38,6 +38,11 @@ function reportView(sc, name, sessions, evaluations, enrollments, meetLink = "")
     filterBar, list);
 }
 
+const safeUrl = (u) => (/^https:\/\/\S+$/.test(u || "") ? u : null);
+function materialsView(list) {
+  return list.length ? h("section", { id: "materials" }, h("h3", {}, "Tài liệu học"), h("ul", {}, list.map((m) => h("li", {}, safeUrl(m.url) ? h("a", { href: m.url, target: "_blank", rel: "noopener noreferrer" }, m.title || m.id) : (m.title || m.id), m.level ? ` · ${m.level}` : "", m.note ? h("span", { class: "note" }, ` ${m.note}`) : null)))) : null;
+}
+
 export async function startStudent({ db, user, profile, main }) {
   const claims = (await user.getIdTokenResult()).claims, sc = claims.sc || profile.sc;
   if (claims.role !== "student" || !claims.sc) throw new Error("Tài khoản chưa có quyền học viên (thiếu claim). Nhờ admin bấm Đặt lại mật khẩu.");
@@ -47,7 +52,9 @@ export async function startStudent({ db, user, profile, main }) {
     docs(query(collection(db, "evaluations"), where("sc", "==", sc), where("status", "==", "Approved"))),
     docs(query(collection(db, "enrollments"), where("sc", "==", sc)))]);
   const me = (await getDoc(doc(db, "students", sc)).catch(() => null))?.data?.() || {};
-  main.replaceChildren(reportView(sc, me.fullName || profile.displayName, sessions, evaluations, enrollments, me.meetLink || ""));
+  const myCourses = new Set(enrollments.map((e) => e.courseId).filter(Boolean));
+  const materials = (await docs(query(collection(db, "materials"), where("forStudents", "==", true))).catch(() => [])).filter((m) => !m.courseId || myCourses.has(m.courseId)).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  main.replaceChildren(...[reportView(sc, me.fullName || profile.displayName, sessions, evaluations, enrollments, me.meetLink || ""), materialsView(materials)].filter(Boolean));
 }
 
 export async function startAgency({ db, user, profile, main }) {

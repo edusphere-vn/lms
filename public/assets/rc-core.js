@@ -5,11 +5,13 @@ const sortKey = (s) => `${s.date || ""}|${s.time || ""}|${s.id}`;
 // sessions: [{id, date, time, scs, attendance, rc?, rcNo?, rcSeq?, locked?}] cua TAT CA giao vien.
 // Tra ve { updates:[{id, data:{rc, rcNo, rcSeq}}], skippedLocked } chi gom buoi co thay doi.
 // rc = { [sc]: {no, seq} } cho tung hoc vien (lop nhom moi nguoi co so rieng); rcNo/rcSeq = so cua hoc vien dau (hien thi).
-export function recomputeRc(sessions) {
+// only (tuy chon, Set cac SC): chi cap nhat so RC cua cac hoc vien nay, giu nguyen so cua hoc vien khac trong lop nhom
+// (dung khi chi co lich su cua mot so hoc vien duoc nap, vi du Worker tinh lai sau khi giao vien luu).
+export function recomputeRc(sessions, only = null) {
   const seq = {}, rc = new Map();
   for (const s of [...sessions].sort((a, b) => sortKey(a).localeCompare(sortKey(b)))) {
-    const m = {};
-    for (const sc of s.scs || []) if (isCounted(s.attendance?.[sc])) { const n = (seq[sc] = (seq[sc] || 0) + 1); m[sc] = { no: Math.floor((n - 1) / 10) + 1, seq: ((n - 1) % 10) + 1 }; }
+    const m = only ? Object.fromEntries(Object.entries(s.rc || {}).filter(([sc]) => !only.has(sc))) : {};
+    for (const sc of s.scs || []) if (isCounted(s.attendance?.[sc])) { const n = (seq[sc] = (seq[sc] || 0) + 1); if (!only || only.has(sc)) m[sc] = { no: Math.floor((n - 1) / 10) + 1, seq: ((n - 1) % 10) + 1 }; }
     rc.set(s.id, m);
   }
   const updates = []; let skippedLocked = 0;

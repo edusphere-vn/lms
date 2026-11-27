@@ -244,6 +244,12 @@ await page.click("#genPreview"); await page.waitForSelector("#genGo", { state: "
 ok((await page.textContent("dialog")).includes("bỏ qua 1 buổi đã có"), "chay lai khong tao trung");
 await page.click("dialog button:has-text('Đóng')");
 
+await page.click("nav button[data-nav=materials]"); await page.waitForSelector("#add"); await page.click("#add");
+await page.fill("form input >> nth=0", "M1"); await page.fill("form input >> nth=1", "Unit 1 slides"); await page.fill("form input >> nth=2", "javascript:alert(1)"); await page.click("form button[type=submit]");
+ok((await page.textContent("dialog")).includes("https://"), "tai lieu: link khong phai https bi tu choi");
+await page.fill("form input >> nth=2", "https://example.com/unit1"); await page.check("form input[type=checkbox]"); await page.click("form button[type=submit]");
+await page.waitForSelector("tr[data-id=M1]"); ok((await fdb.doc("materials/M1").get()).data().forStudents === true, "admin them tai lieu cho hoc vien xem");
+await fdb.doc("materials/M2").set({ title: "Chi giao vien", url: "https://example.com/t", forStudents: false });
 // giao vien dang nhap trong trinh duyet rieng
 const tUser = await getAuth().createUser({ email: "t2@lms.edusphere.vn", password: "gv-mat-khau-1", displayName: "Miles" });
 await getAuth().setCustomUserClaims(tUser.uid, { role: "teacher", teacherId: "T2" });
@@ -255,6 +261,7 @@ await tp.waitForURL("**/app.html**"); await tp.goto("http://localhost:5173/app.h
 ok((await tp.textContent("#weekLabel")).startsWith("23/11") && (await tp.textContent("article.session")).includes("Pham Thanh Thuy B") && (await tp.textContent("article.session")).includes("08:00-08:50"), "giao vien thay buoi cua minh: " + await tp.textContent("main"));
 ok((await tp.locator("article.session").count()) === 1, "chi thay buoi cua minh trong tuan");
 ok((await tp.textContent("#fixedSchedule")).includes("Lịch cố định") && (await tp.textContent("#payHint")).includes("Tạm tính"), "giao vien thay lich co dinh va luong tam tinh: " + (await tp.textContent("#payHint")));
+ok((await tp.textContent("#teacherMaterials")).includes("Unit 1 slides") && (await tp.textContent("#teacherMaterials")).includes("Chi giao vien"), "giao vien thay thu vien tai lieu");
 await tp.fill("#tSearch", "zzzz"); ok((await tp.locator("article.session:visible").count()) === 0, "giao vien loc theo hoc vien"); await tp.fill("#tSearch", "");
 ok((await tp.locator("article.session:visible").count()) === 1, "xoa loc hien lai buoi");
 await tp.selectOption("#tStatus", "done"); ok((await tp.locator("article.session:visible").count()) === 0, "loc da bao cao: chua co buoi nao"); await tp.selectOption("#tStatus", "");
@@ -276,6 +283,7 @@ await ctx3.route(/gstatic\.com\/firebasejs\/11\.0\.2\/firebase-(app|auth|firesto
 await sp.goto("http://localhost:5173/index.html"); await sp.fill("#username", "es112"); await sp.fill("#password", "hv-mat-khau-1"); await sp.click("#loginForm button");
 await sp.waitForURL("**/app.html**"); await sp.waitForSelector("section.report", { timeout: 8000 }).catch(async () => { console.log("STUDENT FAIL:", await sp.textContent("main"), serrors.join(" | ")); process.exit(2); });
 ok((await sp.textContent("section.report")).includes("ES112") && (await sp.textContent("section.report")).includes("buổi"), "hoc vien xem duoc bao cao cua minh");
+ok((await sp.textContent("#materials")).includes("Unit 1 slides") && !(await sp.textContent("#materials")).includes("Chi giao vien"), "hoc vien chi thay tai lieu duoc phep: " + await sp.textContent("main"));
 ok(serrors.length === 0, "trang hoc vien khong loi JS: " + serrors.join(" | "));
 await ctx3.close();
 

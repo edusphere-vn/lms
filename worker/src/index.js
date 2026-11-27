@@ -1,9 +1,12 @@
 // Cloudflare Worker: cac viec dac quyen cua Edusphere LMS.
 //   POST /api/users/create  { username, password, role, displayName?, teacherId?, sc?, agencyId? }
 //   POST /api/users/reset   { uid, password }
+//   POST /api/sessions/recompute-rc { sessionId }   (admin hoac giao vien cua buoi do: tinh lai so RC cua cac hoc vien trong buoi)
 //   POST /api/users/delete  { uid }   (xoa tai khoan dang nhap va users/{uid}; khong cho admin tu xoa minh)
 // Chi admin (ID token Firebase co claim role=admin) duoc goi.
 // Bien moi truong: PROJECT_ID, ALLOWED_ORIGINS, secret FIREBASE_SERVICE_ACCOUNT (JSON).
+
+import { recomputeRc } from "./rc-core.js";
 
 const ROLES = ["admin", "teacher", "student", "agency"];
 const AUTH_DOMAIN = "lms.edusphere.vn";
@@ -130,7 +133,36 @@ async function deleteUser(env, b, claims) {
   return { uid };
 }
 
-const ROUTES = { "/api/users/create": createUser, "/api/users/reset": resetPassword, "/api/users/delete": deleteUser };
+
+// ---- Tinh lai so RC sau khi giao vien luu diem danh (giao vien khong doc duoc buoi cua giao vien khac) ----
+const FS = (env) => `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents`;
+const fromFs = (v) => !v ? null : "stringValue" in v ? v.stringValue : "integerValue" in v ? Number(v.integerValue) : "doubleValue" in v ? v.doubleValue : "booleanValue" in v ? v.booleanValue
+  : "arrayValue" in v ? (v.arrayValue.values || []).map(fromFs) : "mapValue" in v ? Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, fromFs(x)])) : null;
+const toFs = (v) => v == null ? { nullValue: null } : typeof v === "boolean" ? { booleanValue: v } : typeof v === "number" ? (Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v })
+  : typeof v === "string" ? { stringValue: v } : Array.isArray(v) ? { arrayValue: { values: v.map(toFs) } } : { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toFs(x)])) } };
+const decodeDoc = (d) => ({ id: d.name.split("/").pop(), ...Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, fromFs(v)])) });
+
+async function recomputeRcRoute(env, b, claims) {
+  const id = String(b.sessionId || "");
+  if (!/^[A-Za-z0-9_.-]{3,128}$/.test(id)) throw new HttpError(400, "sessionId không hợp lệ");
+  const cur = decodeDoc(await google(env, `${FS(env)}/sessions/${id}`, "GET"));
+  if (claims.role === "teacher" && (!claims.teacherId || cur.teacherId !== claims.teacherId)) throw new HttpError(403, "Không phải buổi học của bạn");
+  const scs = (cur.scs || []).filter((x) => typeof x === "string"), all = new Map();
+  for (const sc of scs) {
+    const rows = await google(env, `${FS(env)}:runQuery`, "POST", { structuredQuery: { from: [{ collectionId: "sessions" }], where: { fieldFilter: { field: { fieldPath: "scs" }, op: "ARRAY_CONTAINS", value: { stringValue: sc } } } } });
+    for (const r of rows) if (r.document) { const d = decodeDoc(r.document); all.set(d.id, d); }
+  }
+  const { updates } = recomputeRc([...all.values()], new Set(scs));
+  for (const u of updates) {
+    const mask = ["rc", "rcNo", "rcSeq"].map((k) => `updateMask.fieldPaths=${k}`).join("&");
+    await google(env, `${FS(env)}/sessions/${u.id}?${mask}`, "PATCH", { fields: Object.fromEntries(Object.entries(u.data).map(([k, v]) => [k, toFs(v)])) });
+  }
+  const me = updates.find((u) => u.id === id)?.data || { rc: cur.rc || {}, rcNo: cur.rcNo ?? null, rcSeq: cur.rcSeq ?? null };
+  return { updated: updates.length, rc: me.rc, rcNo: me.rcNo, rcSeq: me.rcSeq };
+}
+
+const ROUTES = { "/api/users/create": createUser, "/api/users/reset": resetPassword, "/api/users/delete": deleteUser, "/api/sessions/recompute-rc": recomputeRcRoute };
+const TEACHER_OK = new Set(["/api/sessions/recompute-rc"]);   // cac route con lai chi admin
 
 export default {
   async fetch(request, env) {
@@ -142,12 +174,12 @@ export default {
     const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json", ...cors } });
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     try {
-      const handler = ROUTES[new URL(request.url).pathname];
+      const path = new URL(request.url).pathname, handler = ROUTES[path];
       if (!handler || request.method !== "POST") throw new HttpError(404, "Không tìm thấy");
       if (!allowed.includes(origin)) throw new HttpError(403, "Origin không được phép");
       const token = (request.headers.get("authorization") || "").replace(/^Bearer /, "");
       const claims = await verifyIdToken(token, env.PROJECT_ID);
-      if (claims.role !== "admin") throw new HttpError(403, "Chỉ admin được thực hiện");
+      if (claims.role !== "admin" && !(claims.role === "teacher" && TEACHER_OK.has(path))) throw new HttpError(403, "Chỉ admin được thực hiện");
       return json(200, await handler(env, await request.json(), claims));
     } catch (e) {
       if (e instanceof HttpError) return json(e.status, { error: e.message });

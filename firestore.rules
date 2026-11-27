@@ -27,7 +27,8 @@ service cloud.firestore {
     match /config/{k}      { allow read: if signedIn(); allow write: if isAdmin(); }
     match /courses/{id}    { allow read: if signedIn(); allow write: if isAdmin(); }
     match /rubrics/{id}    { allow read: if signedIn(); allow write: if isAdmin(); }
-    match /materials/{id}  { allow read: if isAdmin() || isTeacher(); allow write: if isAdmin(); }
+    // Hoc vien chi xem tai lieu admin danh dau forStudents; giao vien xem het.
+    match /materials/{id}  { allow read: if isAdmin() || isTeacher() || (isStudent() && resource.data.forStudents == true); allow write: if isAdmin(); }
 
     // ---------- tai khoan ----------
     // Nguoi dung doc ho so cua minh; chi duoc tu tat co "phai doi mat khau" sau khi da doi.

@@ -106,7 +106,16 @@ async function createUser(env, b) {
 async function resetPassword(env, b) {
   if (!b.uid) throw new HttpError(400, "Thiếu uid");
   if (String(b.password || "").length < 8) throw new HttpError(400, "Mật khẩu tạm cần ít nhất 8 ký tự");
-  await google(env, `${IDP(env)}/accounts:update`, "POST", { localId: b.uid, password: b.password });
+  // Gan lai quyen (claims) tu ho so users/{uid}, de tai khoan thieu claim duoc sua khi dat lai mat khau.
+  const prof = await google(env, `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/users/${b.uid}`, "GET").catch(() => null);
+  const f = Object.fromEntries(Object.entries(prof?.fields || {}).map(([k, v]) => [k, v.stringValue]));
+  const update = { localId: b.uid, password: b.password };
+  if (ROLES.includes(f.role)) {
+    const claims = { role: f.role };
+    for (const k of ["teacherId", "sc", "agencyId"]) if (f[k]) claims[k] = f[k];
+    update.customAttributes = JSON.stringify(claims);
+  }
+  await google(env, `${IDP(env)}/accounts:update`, "POST", update);
   await writeUserDoc(env, b.uid, { mustChangePassword: true });
   return { uid: b.uid };
 }

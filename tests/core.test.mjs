@@ -193,3 +193,24 @@ test("danh gia: lay tu bang diem General, nhan xet tu tab RC co cung diem, bo da
   assert.ok(p.warnings.some((w) => w.includes("RC2"))); assert.equal(p.writes.at(-1).path, "students/ES1");
   assert.equal(p.writes.at(-1).data.meetLink, "https://meet/x");
 });
+
+// ---------- tao buoi hoc tu luoi lich ----------
+import * as SG from "../public/assets/session-gen-core.js";
+test("dot lien tiep tren luoi: 2 o = 1 buoi 50 phut, o cach quang la buoi rieng", () => {
+  const runs = SG.runsOf({ "1_2000": { t: "Minh" }, "1_2030": { t: "minh" }, "1_2130": { t: "Minh" }, "1_2200": { t: "An", k: "na" }, "3_0900": { t: "Lan, Binh" } });
+  assert.deepEqual(runs.filter((r) => r.col === 1).map((r) => [r.rows, r.text]), [[2, "Minh"], [1, "Minh"]]);
+  assert.equal(runs.length, 3);
+});
+test("tao buoi hoc tuan: thu trong tuan, ghep hoc vien, lop nhom, bo qua buoi da co", () => {
+  const students = [{ sc: "ES1", fullName: "Minh Nghia", agencyId: "TEC" }, { sc: "ES2", fullName: "Lan" }, { sc: "ES3", fullName: "Binh" }, { sc: "ES4", fullName: "Trùng" }, { sc: "ES5", fullName: "Trung" }];
+  const schedules = { T1: { "1_2000": { t: "Minh Nghia" }, "1_2030": { t: "Minh Nghia" }, "3_0900": { t: "Lan, Binh, Nguoi La" }, "4_1000": { t: "Trung" }, "0_0600": { t: "Minh Nghia" } } };
+  const r = SG.generateSessions({ schedules, students, from: "2026-11-23", to: "2026-11-29", existing: new Set(["ES2_2026-11-26"]) });   // 23/11/2026 la thu Hai
+  const by = Object.fromEntries(r.sessions.map((s) => [s.id, s.data]));
+  assert.deepEqual(Object.keys(by).sort(), ["ES1_2026-11-23", "ES1_2026-11-24"]);
+  assert.equal(by["ES1_2026-11-24"].minutes, 50); assert.equal(by["ES1_2026-11-24"].time, "20:00"); assert.deepEqual(by["ES1_2026-11-24"].agencyIds, ["TEC"]);
+  assert.equal(by["ES1_2026-11-23"].time, "06:00"); assert.equal(by["ES1_2026-11-23"].minutes, 25);
+  assert.equal(r.skippedExisting, 1);                                                    // ES2_2026-11-26 da co
+  assert.ok(!by["ES2_2026-11-26"]); assert.equal(r.sessions.length, 2 + 0);
+  assert.ok(r.unresolved.some((u) => u.name === "Nguoi La" && u.reason === "missing") && r.unresolved.some((u) => u.name === "Trung" && u.reason === "ambiguous"));
+  assert.deepEqual([...SG.dateRange("2026-11-29", "2026-12-01")].map((d) => d.iso + ":" + d.col), ["2026-11-29:6", "2026-11-30:0", "2026-12-01:1"]);
+});

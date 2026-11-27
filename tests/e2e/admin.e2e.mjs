@@ -231,6 +231,38 @@ await page.waitForFunction(() => /bỏ qua/.test(document.querySelector("main .m
 ok((await fdb.doc("sessions/ES112_2026-11-03").get()).data().topic === "GIAO VIEN SUA", "nhap lai khong ghi de du lieu da sua");
 await page.click("nav button[data-nav=reports]"); ok((await page.locator("img").count()) === 0, "khong chen HTML tu du lieu bao cao");
 
+
+// 10. Tao buoi hoc tu luoi lich (admin) va giao vien diem danh + nhap bao cao
+await fdb.doc("schedule/T2").set({ teacherId: "T2", cells: { "0_0800": { t: "Pham Thanh Thuy B" }, "0_0830": { t: "Pham Thanh Thuy B" }, "2_1000": { t: "Khong Co Ten Nay" } } });
+await page.click("nav button[data-nav=schedule]"); await page.waitForSelector("#genBtn"); await page.click("#genBtn"); await page.waitForSelector("#genPreview");
+await page.fill("#genFrom", "2026-11-23"); await page.fill("#genTo", "2026-11-29"); await page.click("#genPreview"); await page.waitForSelector("#genGo");
+ok((await page.textContent("dialog")).includes("Sẽ tạo 1 buổi học") && (await page.textContent("dialog")).includes("Khong Co Ten Nay"), "xem truoc: 1 buoi + ten chua khop: " + (await page.textContent("dialog")).slice(0, 300));
+await page.click("#genGo"); await page.waitForFunction(() => /Xong\./.test(document.querySelector("dialog .msg")?.textContent || ""));
+const gen = (await fdb.doc("sessions/ES112_2026-11-23").get()).data();
+ok(gen.time === "08:00" && gen.minutes === 50 && gen.teacherId === "T2" && JSON.stringify(gen.scs) === '["ES112"]' && gen.source === "schedule", "tao buoi tu luoi: " + JSON.stringify(gen));
+await page.click("#genPreview"); await page.waitForSelector("#genGo", { state: "attached" }).catch(() => {});
+ok((await page.textContent("dialog")).includes("bỏ qua 1 buổi đã có"), "chay lai khong tao trung");
+await page.click("dialog button:has-text('Đóng')");
+
+// giao vien dang nhap trong trinh duyet rieng
+const tUser = await getAuth().createUser({ email: "t2@lms.edusphere.vn", password: "gv-mat-khau-1", displayName: "Miles" });
+await getAuth().setCustomUserClaims(tUser.uid, { role: "teacher", teacherId: "T2" });
+await fdb.doc(`users/${tUser.uid}`).set({ username: "t2", displayName: "Miles", role: "teacher", teacherId: "T2", mustChangePassword: false });
+const ctx2 = await browser.newContext(); const tp = await ctx2.newPage(); const terrors = []; tp.on("pageerror", (e) => terrors.push(e.message));
+await ctx2.route(/gstatic\.com\/firebasejs\/11\.0\.2\/firebase-(app|auth|firestore)\.js/, (r) => r.fulfill({ contentType: "text/javascript", body: `export * from "http://localhost:5173/__fb/all.js";` }));
+await tp.goto("http://localhost:5173/index.html"); await tp.fill("#username", "t2"); await tp.fill("#password", "gv-mat-khau-1"); await tp.click("#loginForm button");
+await tp.waitForURL("**/app.html**"); await tp.goto("http://localhost:5173/app.html?week=2026-11-23"); await tp.waitForSelector("article.session", { timeout: 8000 }).catch(async () => { console.log("TEACHER FAIL:", await tp.textContent("main"), terrors.join(" | ")); process.exit(2); });
+ok((await tp.textContent("#weekLabel")).startsWith("23/11") && (await tp.textContent("article.session")).includes("Pham Thanh Thuy B") && (await tp.textContent("article.session")).includes("08:00-08:50"), "giao vien thay buoi cua minh: " + await tp.textContent("main"));
+ok((await tp.locator("article.session").count()) === 1, "chi thay buoi cua minh trong tuan");
+await tp.selectOption("article.session select", "Present"); await tp.fill("textarea[data-f=topic]", "OXFORD 1"); await tp.fill("textarea[data-f=lesson]", "<i>Unit 1</i>"); await tp.fill("textarea[data-f=feedback]", "Tot");
+await tp.click("article.session button.p"); await tp.waitForSelector("article.session.done");
+const rep = (await fdb.doc("sessions/ES112_2026-11-23").get()).data();
+ok(rep.attendance.ES112 === "Present" && rep.topic === "OXFORD 1" && rep.lesson === "<i>Unit 1</i>" && rep.feedback === "Tot" && rep.reportedAt > 0 && rep.teacherId === "T2", "giao vien diem danh va luu bao cao");
+ok((await tp.locator("article.session i").count()) === 0 && (await tp.textContent("#weekCount")).includes("đã báo cáo 1"), "khong chen HTML, dem da bao cao");
+await tp.goto("http://localhost:5173/app.html?week=2026-09-07"); await tp.waitForSelector(".empty");
+ok(terrors.length === 0, "trang giao vien khong loi JS: " + terrors.join(" | "));
+await ctx2.close();
+
 ok(errors.filter((e) => !/emulator|Failed to load resource/i.test(e)).length === 0, "khong co loi JS: " + errors.join(" | "));
 console.log("pass", pass);
 await browser.close(); server.close();

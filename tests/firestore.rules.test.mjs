@@ -1,6 +1,6 @@
 import { initializeTestEnvironment, assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
 import { readFileSync } from "fs";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where } from "firebase/firestore";
 const env = await initializeTestEnvironment({ projectId: "esvn-lms", firestore: { rules: readFileSync("firestore.rules","utf8"), host:"127.0.0.1", port:8080 }});
 await env.withSecurityRulesDisabled(async (c) => {
   const d = c.firestore();
@@ -47,6 +47,12 @@ await T("teacher cannot edit schedule", assertFails(setDoc(doc(t,"schedule/T1"),
 await T("student cannot read schedule", assertFails(getDoc(doc(s,"schedule/T1"))));
 await T("admin writes enrollment", assertSucceeds(setDoc(doc(a,"enrollments/ES112_2026-08-10"), { sc:"ES112", teacherId:"T1", courseId:"ESL_SP" })));
 await T("teacher cannot read billing of imported package", assertFails(getDoc(doc(t,"billing/ES112_2026-08-10"))));
+await T("teacher lists own sessions by teacherId", assertSucceeds(getDocs(query(collection(t,"sessions"), where("teacherId","==","T1")))));
+await T("teacher cannot list another teacher's sessions", assertFails(getDocs(query(collection(t,"sessions"), where("teacherId","==","T2")))));
+await T("teacher cannot list all sessions", assertFails(getDocs(collection(t,"sessions"))));
+await T("teacher lists own students by array-contains", assertSucceeds(getDocs(query(collection(t,"students"), where("teacherIds","array-contains","T1")))));
+await T("teacher cannot list students of others", assertFails(getDocs(query(collection(t,"students"), where("teacherIds","array-contains","T2")))));
+await T("teacher saves attendance map + report", assertSucceeds(updateDoc(doc(t,"sessions/s1"), { attendance:{ ES112:"Absent" }, topic:"x", lesson:"y", feedback:"z", reportedAt:1 })));
 await T("anon blocked from sessions", assertFails(getDoc(doc(anon,"sessions/s1"))));
 console.log("pass",pass,"fail",fail);
 await env.cleanup();

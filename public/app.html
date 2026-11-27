@@ -34,10 +34,12 @@
     .row { display:flex; gap:10px; justify-content:flex-end; align-items:center; margin-top:12px; }
     .msg.err { color:var(--err); }
   </style>
+  <link rel="stylesheet" href="assets/theme.css">
+  <style>.container > main { max-width:none; margin:0; padding:0; } section h3 { margin:14px 0 8px; }</style>
 </head>
 <body>
-  <header class="top"><h1>Edusphere LMS</h1><span id="who" class="note"></span><button class="s" id="out">Đăng xuất</button></header>
-  <main id="main"><p>Đang tải...</p></main>
+  <header class="topbar"><h1>Edusphere LMS</h1><div class="user"><span id="who"></span><button class="s" id="out">Đăng xuất</button></div></header>
+  <div class="container"><main id="main"><p>Đang tải...</p></main></div>
   <script type="module">
     import { auth, db } from "./assets/firebase.js";
     import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";

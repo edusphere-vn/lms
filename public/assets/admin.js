@@ -7,6 +7,7 @@ import { openImport } from "./import-students.js";
 import { renderReports } from "./reports-import.js";
 import { renderPayroll } from "./payroll.js";
 import { renderSessions } from "./sessions-admin.js";
+import { renderDashboard } from "./dashboard-admin.js";
 import { slotsForName, DAYS, normName } from "./grid-core.js";
 
 // ---------- helper DOM (luon dung textContent, khong chen HTML tu du lieu) ----------
@@ -45,6 +46,9 @@ const ENTITIES = {
     { k: "materialId", label: "Mã tài liệu", req: true }, { k: "title", label: "Tên tài liệu", req: true }, { k: "url", label: "Link (https://...)", req: true },
     { k: "courseId", label: "Khóa học", type: "select", options: () => [["", "Mọi khóa"], ...(cache.courses || []).map((c) => [c.courseId, c.name || c.courseId])] },
     { k: "level", label: "Cấp độ / chủ đề" }, { k: "forStudents", label: "Học viên được xem", type: "bool" }, { k: "note", label: "Ghi chú" } ] },
+  notices: { title: "Thông báo", coll: "notices", id: "noticeId", fields: [
+    { k: "noticeId", label: "Mã thông báo", req: true }, { k: "title", label: "Tiêu đề", req: true }, { k: "content", label: "Nội dung", type: "textarea", req: true },
+    { k: "target", label: "Gửi tới", type: "select", options: [["all", "Tất cả"], ["teacher", "Giáo viên"], ["student", "Học viên"], ["agency", "Agency"]] }, { k: "active", label: "Đang hiển thị", type: "bool", def: true } ] },
   courses: { title: "Khóa học", coll: "courses", id: "courseId", fields: [
     { k: "courseId", label: "Mã khóa", req: true }, { k: "name", label: "Tên", req: true },
     { k: "scale", label: "Thang điểm", type: "select", options: [["CEFR100", "CEFR (100 điểm)"], ["IELTS_BAND", "IELTS band"]] },
@@ -53,7 +57,7 @@ const ENTITIES = {
 const cache = {};     // cache[collection] = [docs]
 const teacherName = (id) => (cache.teachers || []).find((t) => t.teacherId === id)?.name || id;
 let accounts = [];     // users/*
-let current = "teachers";
+let current = "dashboard";
 
 async function load(coll) {
   const snap = await getDocs(collection(db, coll));
@@ -77,8 +81,10 @@ async function render() {
   const my = ++renderSeq, ent = ENTITIES[current];
   const main = $("main"); main.replaceChildren();
   leaveSchedule();
-  $("nav").replaceChildren(...[...Object.entries(ENTITIES), ["schedule", { title: "Lịch giáo viên" }], ["sessions", { title: "Buổi học" }], ["payroll", { title: "Lương" }], ["reports", { title: "Nhập báo cáo" }], ["settings", { title: "Cài đặt" }]].map(([key, e]) =>
-    h("button", { "aria-current": String(key === current), "data-nav": key, onclick: () => { current = key; render(); } }, e.title)));
+  const NAV = [["dashboard", "Tổng quan"], "Vận hành", ["schedule", "Lịch giáo viên"], ["sessions", "Buổi học"], ["payroll", "Lương"], "Quản lý", ...Object.entries(ENTITIES).map(([k, e]) => [k, e.title]), "Hệ thống", ["reports", "Nhập báo cáo"], ["settings", "Cài đặt"]];
+  $("nav").replaceChildren(...NAV.map((x) => typeof x === "string" ? h("div", { class: "sep" }, x) :
+    h("button", { "aria-current": String(x[0] === current), "data-nav": x[0], onclick: () => { current = x[0]; render(); } }, x[1])));
+  if (current === "dashboard") return renderDashboard(main, { db, h, alive: () => my === renderSeq, go: (k) => { current = k; render(); } });
   if (current === "settings") return renderSettings(main);
   if (current === "sessions") return renderSessions(main, { db, h, alive: () => my === renderSeq });
   if (current === "payroll") return renderPayroll(main, { db, h, alive: () => my === renderSeq });
@@ -128,8 +134,9 @@ function openForm(ent, row) {
       const val = row?.[f.k];
       let input;
       if (f.type === "select") { input = h("select", {}, (typeof f.options === "function" ? f.options() : f.options).map(([v, l]) => h("option", { value: v, selected: v === (val ?? "") }, l))); }
-      else if (f.type === "bool") { input = h("input", { type: "checkbox", checked: !!val }); }
+      else if (f.type === "bool") { input = h("input", { type: "checkbox", checked: (editing || val !== undefined) ? !!val : !!f.def }); }
       else if (f.type === "tags") { input = h("input", { value: Array.isArray(val) ? val.join(", ") : "" }); }
+      else if (f.type === "textarea") { input = h("textarea", { rows: "5", required: !!f.req }, val ?? ""); }
       else if (f.type === "teachers") {
         const sel = new Set(Array.isArray(val) ? val : []);
         input = h("div", { class: "checklist", "data-field": f.k }, (cache.teachers || []).map((t) => h("label", { class: "inline" }, h("input", { type: "checkbox", value: t.teacherId, checked: sel.has(t.teacherId) }), ` ${t.name} (${t.teacherId})`)),
@@ -153,6 +160,7 @@ function openForm(ent, row) {
       else if (el.value !== "" || editing) data[f.k] = el.value.trim();
     }
     if (ent.coll === "materials" && !/^https:\/\/\S+$/.test(data.url || "")) { msg.textContent = "Link phải bắt đầu bằng https:// và không có khoảng trắng."; return; }
+    if (ent.coll === "notices" && !editing) data.createdAt = Date.now();
     const id = String(data[ent.id] ?? row?.[ent.id] ?? "").trim();
     if (!id || /[\/\s]/.test(id)) { msg.textContent = "Mã không được để trống, không chứa khoảng trắng hoặc dấu /."; return; }
     if (!editing && cache[ent.coll].some((r) => r[ent.id] === id)) { msg.textContent = "Mã này đã tồn tại."; return; }

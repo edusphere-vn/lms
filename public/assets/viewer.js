@@ -1,6 +1,8 @@
 // Giao diện học viên và agency: xem báo cáo (buổi học đã học, nhận xét, đánh giá cuối RC). Chỉ đọc.
 import { collection, getDocs, getDoc, doc, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { buildReport } from "./report-core.js";
+import { mountShell } from "./shell.js";
+import { noticesView } from "./notices-view.js";
 
 const h = (tag, attrs = {}, ...kids) => {
   const el = document.createElement(tag);
@@ -28,19 +30,20 @@ function reportView(sc, name, sessions, evaluations, enrollments, meetLink = "")
   for (const el of [from, to, stat]) el.onchange = showList;
   const filterBar = h("div", { class: "bar", style: "flex-wrap:wrap;gap:8px" }, "Từ ", from, " đến ", to, stat, cnt);
   showList();
-  return h("section", { class: "report", "data-sc": sc },
-    h("h2", {}, name || sc), h("p", { class: "note" }, `Mã ${sc}`),
+  const head = h("section", { class: "report card", "data-sc": sc },
+    h("h2", { style: "margin:0 0 4px" }, name || sc), h("p", { class: "note" }, `Mã ${sc}`),
     h("p", {}, h("strong", {}, `RC${r.rcNo}`), `: ${r.inRc}/10 buổi. Tổng ${r.counted} buổi đã học (${r.present} có mặt, ${r.absent} vắng).`),
-    enr.length ? h("p", { class: "note" }, "Gói học: " + enr.map((e) => `${e.courseId || ""} ${e.startDate || ""}${e.endDate ? " - " + e.endDate : ""}${e.status ? " (" + e.status + ")" : ""}`).join("; ")) : null,
-    r.evaluations.length ? [h("h3", {}, "Đánh giá"), h("div", { class: "wrap" }, h("table", {}, h("tbody", {}, r.evaluations.map((e) => h("tr", {}, h("td", {}, e.kind || `Exam ${e.rcNo}`), h("td", {}, dmy(e.date)), h("td", {}, Object.entries(e.scores || {}).map(([k, v]) => `${k}: ${v}`).join(", ")), h("td", {}, e.level || ""))))))] : null,
-    upcoming.length ? [h("h3", {}, "Lịch sắp học"), h("div", { class: "wrap", id: "upcoming" }, h("table", {}, h("tbody", {}, upcoming.map((u) => h("tr", {}, h("td", {}, dmy(u.date)), h("td", {}, `${u.time || ""}${u.minutes ? " (" + u.minutes + "p)" : ""}`), h("td", {}, u.makeupOf ? "Học bù" : ""), h("td", {}, u.meetLink ? h("a", { href: u.meetLink, target: "_blank", rel: "noopener noreferrer" }, "Vào lớp") : ""))))))] : null,
-    h("h3", {}, "Các buổi học"),
-    filterBar, list);
+    h("div", { class: "progress" }, h("div", { style: `width:${Math.min(100, Math.round(r.inRc * 10))}%` })),
+    enr.length ? h("p", { class: "note" }, "Gói học: " + enr.map((e) => `${e.courseId || ""} ${e.startDate || ""}${e.endDate ? " - " + e.endDate : ""}${e.status ? " (" + e.status + ")" : ""}`).join("; ")) : null);
+  const evalsEl = r.evaluations.length ? [h("h3", {}, "Đánh giá"), h("div", { class: "wrap" }, h("table", {}, h("tbody", {}, r.evaluations.map((e) => h("tr", {}, h("td", {}, e.kind || `Exam ${e.rcNo}`), h("td", {}, dmy(e.date)), h("td", {}, Object.entries(e.scores || {}).map(([k, v]) => `${k}: ${v}`).join(", ")), h("td", {}, e.level || ""))))))] : null;
+  const upEl = upcoming.length ? [h("h3", {}, "Lịch sắp học"), h("div", { class: "wrap", id: "upcoming" }, h("table", {}, h("tbody", {}, upcoming.map((u) => h("tr", {}, h("td", {}, dmy(u.date)), h("td", {}, `${u.time || ""}${u.minutes ? " (" + u.minutes + "p)" : ""}`), h("td", {}, u.makeupOf ? "Học bù" : ""), h("td", {}, u.meetLink ? h("a", { href: u.meetLink, target: "_blank", rel: "noopener noreferrer" }, "Vào lớp") : ""))))))] : null;
+  const repEl = h("div", { class: "card", id: "reportsCard" }, h("h3", {}, "Các buổi học"), filterBar, list);
+  return { head, evalsEl: evalsEl && h("div", { class: "card" }, evalsEl), upEl: upEl && h("div", { class: "card" }, upEl), repEl, all: () => h("div", {}, head, evalsEl && h("div", { class: "card" }, evalsEl), upEl && h("div", { class: "card" }, upEl), repEl) };
 }
 
 const safeUrl = (u) => (/^https:\/\/\S+$/.test(u || "") ? u : null);
 function materialsView(list) {
-  return list.length ? h("section", { id: "materials" }, h("h3", {}, "Tài liệu học"), h("ul", {}, list.map((m) => h("li", {}, safeUrl(m.url) ? h("a", { href: m.url, target: "_blank", rel: "noopener noreferrer" }, m.title || m.id) : (m.title || m.id), m.level ? ` · ${m.level}` : "", m.note ? h("span", { class: "note" }, ` ${m.note}`) : null)))) : null;
+  return list.length ? h("div", { class: "card", id: "materials" }, h("h3", {}, "Tài liệu học"), h("ul", {}, list.map((m) => h("li", {}, safeUrl(m.url) ? h("a", { href: m.url, target: "_blank", rel: "noopener noreferrer" }, m.title || m.id) : (m.title || m.id), m.level ? ` · ${m.level}` : "", m.note ? h("span", { class: "note" }, ` ${m.note}`) : null)))) : null;
 }
 
 export async function startStudent({ db, user, profile, main }) {
@@ -54,7 +57,12 @@ export async function startStudent({ db, user, profile, main }) {
   const me = (await getDoc(doc(db, "students", sc)).catch(() => null))?.data?.() || {};
   const myCourses = new Set(enrollments.map((e) => e.courseId).filter(Boolean));
   const materials = (await docs(query(collection(db, "materials"), where("forStudents", "==", true))).catch(() => [])).filter((m) => !m.courseId || myCourses.has(m.courseId)).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-  main.replaceChildren(...[reportView(sc, me.fullName || profile.displayName, sessions, evaluations, enrollments, me.meetLink || ""), materialsView(materials)].filter(Boolean));
+  const rv = reportView(sc, me.fullName || profile.displayName, sessions, evaluations, enrollments, me.meetLink || "");
+  await mountShell({ main, tabs: [
+    { key: "schedule", title: "Lịch học", render: (el) => el.append(...[rv.head, rv.upEl || h("div", { class: "card" }, h("p", { class: "note" }, "Chưa có buổi học sắp tới."))].filter(Boolean)) },
+    { key: "reports", title: "Báo cáo", render: (el) => el.append(...[rv.evalsEl, rv.repEl].filter(Boolean)) },
+    { key: "materials", title: "Tài liệu", render: (el) => el.append(materialsView(materials) || h("div", { class: "card" }, h("p", { class: "note" }, "Chưa có tài liệu."))) },
+    { key: "notices", title: "Thông báo", render: async (el) => el.append(await noticesView(db, "student", h)) }] });
 }
 
 export async function startAgency({ db, user, profile, main }) {
@@ -71,6 +79,8 @@ export async function startAgency({ db, user, profile, main }) {
   const fill = () => { const q = norm(search.value), cur = sel.value; const list = students.filter((s) => !q || norm(`${s.fullName || ""} ${s.id}`).includes(q));
     sel.replaceChildren(h("option", { value: "" }, `— Chọn học viên (${list.length}) —`), ...list.map((s) => h("option", { value: s.id, selected: s.id === cur }, `${s.fullName || s.id} (${s.id})`))); };
   search.oninput = fill; fill();
-  sel.onchange = () => { const s = students.find((x) => x.id === sel.value); box.replaceChildren(...(s ? [reportView(s.id, s.fullName, sessions, evaluations, enrollments, s.meetLink || "")] : [])); };
-  main.replaceChildren(h("h2", {}, profile.displayName || agencyId), h("p", { class: "note" }, `${students.length} học viên`), search, sel, box);
+  sel.onchange = () => { const s = students.find((x) => x.id === sel.value); box.replaceChildren(...(s ? [reportView(s.id, s.fullName, sessions, evaluations, enrollments, s.meetLink || "").all()] : [])); };
+  await mountShell({ main, tabs: [
+    { key: "students", title: "Học viên", render: (el) => el.append(h("div", { class: "card" }, h("h3", {}, profile.displayName || agencyId), h("p", { class: "note" }, `${students.length} học viên`), search, sel), box) },
+    { key: "notices", title: "Thông báo", render: async (el) => el.append(await noticesView(db, "agency", h)) }] });
 }

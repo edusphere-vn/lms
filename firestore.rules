@@ -26,6 +26,11 @@ service cloud.firestore {
     // ---------- cau hinh & danh muc: ai dang nhap cung doc, chi admin ghi ----------
     match /config/{k}      { allow read: if signedIn(); allow write: if isAdmin(); }
     match /courses/{id}    { allow read: if signedIn(); allow write: if isAdmin(); }
+    // Thong bao: admin ghi; moi vai tro doc thong bao dang hien thi gui cho 'all' hoac vai tro cua minh.
+    match /notices/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.active == true && resource.data.target in ['all', role()]);
+      allow write: if isAdmin();
+    }
     match /rubrics/{id}    { allow read: if signedIn(); allow write: if isAdmin(); }
     // Hoc vien chi xem tai lieu admin danh dau forStudents; giao vien xem het.
     match /materials/{id}  { allow read: if isAdmin() || isTeacher() || (isStudent() && resource.data.forStudents == true); allow write: if isAdmin(); }

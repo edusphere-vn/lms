@@ -15,6 +15,9 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(d,"evaluations/e2"), { sc:"ES112", teacherId:"T1", agencyId:"OEC", status:"Approved" });
   await setDoc(doc(d,"materials/m1"), { title:"A", url:"https://x.y", forStudents:true });
   await setDoc(doc(d,"materials/m2"), { title:"B", url:"https://x.z", forStudents:false });
+  await setDoc(doc(d,"notices/n1"), { title:"a", target:"all", active:true });
+  await setDoc(doc(d,"notices/n2"), { title:"b", target:"teacher", active:true });
+  await setDoc(doc(d,"notices/n3"), { title:"c", target:"all", active:false });
   await setDoc(doc(d,"enrollments/ES112_2026"), { sc:"ES112", agencyId:"OEC", teacherId:"T1" });
 });
 const as = (uid, claims) => env.authenticatedContext(uid, claims).firestore();
@@ -74,5 +77,11 @@ await T("student cannot list all materials", assertFails(getDocs(collection(s,"m
 await T("teacher reads all materials", assertSucceeds(getDocs(collection(t,"materials"))));
 await T("agency cannot read materials", assertFails(getDoc(doc(ag,"materials/m1"))));
 await T("teacher cannot write materials", assertFails(setDoc(doc(t,"materials/m3"), { title:"C", url:"https://a.b" })));
+await T("student lists notices for all/student", assertSucceeds(getDocs(query(collection(s,"notices"), where("active","==",true), where("target","in",["all","student"])))));
+await T("student cannot read teacher notice", assertFails(getDoc(doc(s,"notices/n2"))));
+await T("student cannot read inactive notice", assertFails(getDoc(doc(s,"notices/n3"))));
+await T("teacher reads teacher notice", assertSucceeds(getDoc(doc(t,"notices/n2"))));
+await T("teacher cannot write notice", assertFails(setDoc(doc(t,"notices/n9"), { title:"x", target:"all", active:true })));
+await T("agency reads all-notice but not teacher-notice", Promise.all([assertSucceeds(getDoc(doc(ag,"notices/n1"))), assertFails(getDoc(doc(ag,"notices/n2")))]));
 console.log("pass",pass,"fail",fail);
 await env.cleanup();

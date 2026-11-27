@@ -69,11 +69,17 @@
     .info ul { margin:4px 0; padding-left:20px; font-size:14px; }
     code { background:var(--bg); padding:1px 6px; border-radius:6px; user-select:all; }
   </style>
+  <link rel="stylesheet" href="assets/theme.css">
 </head>
 <body>
-<header><h1>Edusphere LMS · Admin</h1><span id="who" class="note"></span><button class="s" id="out">Đăng xuất</button></header>
-<nav id="nav"></nav>
-<main id="main"></main>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-header"><h1>Edusphere LMS</h1><p>Admin</p></div>
+    <nav id="nav"></nav>
+    <div class="sidebar-foot"><span id="who" class="note"></span><button class="s" id="out">Đăng xuất</button></div>
+  </aside>
+  <main id="main"></main>
+</div>
 <dialog id="dlg"></dialog>
 <script type="module" src="assets/admin.js"></script>
 </body>

@@ -6,7 +6,7 @@
     "test:rules": "firebase emulators:exec --only firestore --project esvn-lms \"node tests/firestore.rules.test.mjs\"",
     "test:worker": "node --test worker/test/worker.test.mjs",
     "test:e2e": "esbuild tests/e2e/firebase-entry.js --bundle --format=esm --outfile=tests/e2e/.cache/all.js --log-level=error && firebase emulators:exec --only auth,firestore --project esvn-lms \"node tests/e2e/admin.e2e.mjs\"",
-    "test:core": "node --test tests/core.test.mjs"
+    "test:core": "node --test tests/core.test.mjs tests/report-parser.test.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",

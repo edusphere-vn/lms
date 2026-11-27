@@ -206,6 +206,31 @@ const nb = (await fdb.collection("teachers").where("name", "==", "Newbie").get()
 ok(nb && (await fdb.doc(`schedule/${nb.id}`).get()).data().cells["0_2000"].t === "Thanh Danh", "tao giao vien moi va lich");
 await page.click("dialog button:has-text('Đóng')");
 
+
+// 9. Nhap bao cao cu (JSON xuat tu Apps Script)
+const mkRep = (student, over = {}) => ({ fileId: "f1", fileName: `ESL Speaking Report_${student}_T.Miles`, path: "Miles", url: "https://drive.google.com/file/x", student, teacher: "MILES", course: "ESL Speaking", meetLink: "https://meet.google.com/new-link", book: "", warnings: [],
+  scoreTable: [{ remark: "Entrance", date: "2026-11-01", scores: { Speaking: 10, Listening: 9, Pronunciation: 8, Vocabulary: 10, Grammar: 8 }, level: "A2" }],
+  attendance: [{ no: 1, date: "2026-11-03", status: "Present" }, { no: 2, date: "2026-11-05", status: "Cancelled" }, { no: 3, date: "2026-11-07", status: "Absent" }],
+  rcs: [{ rc: 1, evaluation: null, sessions: [{ date: "2026-11-03", status: "Present", teacher: "Miles", progress: "BOOK 1", academic: "<b>UNIT 1</b>", participation: "tot" }, { date: "2026-11-06", status: "Absent", teacher: "Miles", progress: "BOOK 1", academic: "", participation: "" }] }], ...over });
+const exportJson = { exportedAt: "2026-11-27T00:00:00Z", total: 3, reports: [mkRep("Pham Thanh Thuy B"), mkRep("Nguoi La Khong Co")], errors: [{ fileName: "hong.xlsx", path: "Miles", error: "Exception: boom" }] };
+const repPath = path.join(os.tmpdir(), "lms_reports_export.json"); fs.writeFileSync(repPath, JSON.stringify(exportJson));
+await page.click("nav button[data-nav=reports]"); await page.waitForSelector("#repFile"); await page.setInputFiles("#repFile", repPath); await page.waitForSelector("#repGo");
+ok((await page.locator("tbody tr[data-i]").count()) === 2 && (await page.locator("tr[data-i='0'] select").inputValue()) === "ES112" && (await page.locator("tr[data-i='1'] select").inputValue()) === "", "ghep tu dong hoc vien theo ten, ban kia chua ghep");
+ok((await page.textContent("main")).includes("Sẽ nhập 1 học viên: 3 buổi học, 1 đánh giá"), "ke hoach nhap bao cao: " + (await page.textContent("main")).match(/Sẽ nhập[^.]*\./)?.[0]);
+ok((await page.locator("tr[data-tk=miles] select").inputValue()) === "T2", "giao vien MILES khop T2");
+ok((await page.locator("details li").first().textContent()).includes("boom"), "hien danh sach file loi");
+await page.click("#repGo"); await page.waitForFunction(() => /Xong\./.test(document.querySelector("main .msg")?.textContent || ""));
+const ses = (await fdb.collection("sessions").where("scs", "array-contains", "ES112").get()).docs.map((d) => [d.id, d.data()]).sort();
+ok(ses.map((x) => x[0]).join() === "ES112_2026-11-03,ES112_2026-11-05,ES112_2026-11-07", "3 buoi (Cancelled giu lai, Absent ghep theo thu tu): " + ses.map((x) => x[0]));
+const s3 = Object.fromEntries(ses);
+ok(s3["ES112_2026-11-03"].lesson === "<b>UNIT 1</b>" && s3["ES112_2026-11-03"].rcNo === 1 && s3["ES112_2026-11-05"].rcNo === null && s3["ES112_2026-11-07"].rcSeq === 2 && s3["ES112_2026-11-07"].teacherId === "T2" && s3["ES112_2026-11-07"].flags.includes("date_differs"), "noi dung, RC, co lech ngay: " + JSON.stringify(s3["ES112_2026-11-07"]));
+ok((await fdb.doc("evaluations/ES112_0").get()).data().status === "Approved" && (await fdb.doc("students/ES112").get()).data().legacyReportUrl === "https://drive.google.com/file/x", "ghi danh gia + lien ket bao cao cu");
+await fdb.doc("sessions/ES112_2026-11-03").update({ topic: "GIAO VIEN SUA" });
+await page.click("nav button[data-nav=reports]"); await page.setInputFiles("#repFile", repPath); await page.waitForSelector("#repGo"); await page.click("#repGo");
+await page.waitForFunction(() => /bỏ qua/.test(document.querySelector("main .msg")?.textContent || ""));
+ok((await fdb.doc("sessions/ES112_2026-11-03").get()).data().topic === "GIAO VIEN SUA", "nhap lai khong ghi de du lieu da sua");
+await page.click("nav button[data-nav=reports]"); ok((await page.locator("img").count()) === 0, "khong chen HTML tu du lieu bao cao");
+
 ok(errors.filter((e) => !/emulator|Failed to load resource/i.test(e)).length === 0, "khong co loi JS: " + errors.join(" | "));
 console.log("pass", pass);
 await browser.close(); server.close();

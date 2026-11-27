@@ -150,3 +150,46 @@ test("doc ClassSKD: khoi giao vien, mau o, gio ngoai luoi", () => {
   assert.equal(w.newTeachers, 1); assert.equal(w.writes.find((x) => x.path === "teachers/T5").data.name, "Jules");
   assert.ok(w.writes.find((x) => x.path === "schedule/T1").data.cells["6_2330"]); assert.ok(w.writes.find((x) => x.path === "schedule/T5"));
 });
+
+// ---------- nhap bao cao hoc vien ----------
+import * as RI from "../public/assets/reports-import-core.js";
+test("ghep hoc vien theo ten khong dau, goi y ten gan giong", () => {
+  const st = [{ sc: "A", fullName: "Hồ Linh San" }, { sc: "B", fullName: "Ho Linh San" }, { sc: "C", fullName: "Quoc Tri" }];
+  assert.equal(RI.matchStudents(" ho  linh san", st).exact.length, 2);
+  assert.equal(RI.matchStudents("Quoc Tri Nguyen", st).exact.length, 0);
+  assert.deepEqual(RI.matchStudents("Quoc Trii", st).near.map((s) => s.sc), ["C"]);
+});
+const rep0 = (over = {}) => ({ student: "A", teacher: "Miles", url: "https://drive/x", meetLink: "https://meet/x", warnings: [], scoreTable: [], attendance: [], rcs: [], ...over });
+const ctx0 = (o = {}) => ({ sc: "ES1", teacherIdFor: (n) => ({ miles: "T2", alden: "T1" })[String(n).toLowerCase()] || "", agencyId: "TEC", minDate: "2026-01-01", student: {}, ...o });
+test("ghep khoi bao cao voi diem danh theo thu tu, lay ngay diem danh, danh dau lech", () => {
+  const att = [["2026-10-20", "Present"], ["2026-11-17", "Present"], ["2026-11-20", "Cancelled"], ["2026-11-21", "Absent"]].map(([date, status], i) => ({ no: i + 1, date, status }));
+  const blocks = [{ date: "2026-10-20", status: "Present", teacher: "Miles", progress: "P1", academic: "A1", participation: "C1" }, { date: "2026-10-17", status: "Present", teacher: "MILES", progress: "P2", academic: "", participation: "" },
+    { date: "", status: "Absent", teacher: "Miles", progress: "", academic: "x", participation: "" }];
+  const p = RI.planReport(rep0({ attendance: att, rcs: [{ rc: 1, sessions: blocks }] }), ctx0());
+  const s = Object.fromEntries(p.writes.filter((w) => w.path.startsWith("sessions/")).map((w) => [w.path.slice(13), w.data]));
+  assert.deepEqual(Object.keys(s), ["2026-10-20", "2026-11-17", "2026-11-20", "2026-11-21"]);   // ngay diem danh thang ngay go sai 10-17
+  assert.equal(s["2026-11-17"].reportDate, "2026-10-17"); assert.ok(s["2026-11-17"].flags.includes("date_differs"));
+  assert.deepEqual([s["2026-10-20"].rcNo, s["2026-10-20"].rcSeq, s["2026-11-20"].rcNo, s["2026-11-21"].rcSeq], [1, 1, null, 3]);   // Cancelled khong tinh RC
+  assert.equal(s["2026-11-21"].topic, ""); assert.equal(s["2026-11-21"].lesson, "x"); assert.equal(s["2026-10-20"].teacherId, "T2");   // khoi khong ngay nhan ngay tu diem danh
+  assert.equal(s["2026-11-20"].topic, undefined); assert.deepEqual(s["2026-11-20"].attendance, { ES1: "Cancelled" });
+  assert.deepEqual(s["2026-10-20"].agencyIds, ["TEC"]);
+});
+test("khac so buoi tinh thi ghep theo ngay, buoi le thanh 'chi co o mot ben'; loc theo ngay toi thieu", () => {
+  const att = [{ no: 1, date: "2026-02-01", status: "Present" }, { no: 2, date: "2025-12-30", status: "Present" }, { no: 3, date: "2026-02-05", status: "Present" }];
+  const blocks = [{ date: "2026-02-01", status: "Present", teacher: "", progress: "p", academic: "", participation: "" }, { date: "2026-02-09", status: "Present", teacher: "", progress: "q", academic: "", participation: "" }];
+  const p = RI.planReport(rep0({ attendance: att, rcs: [{ rc: 1, sessions: blocks }] }), ctx0({ minDate: "2026-01-01" }));
+  const s = Object.fromEntries(p.writes.filter((w) => w.path.startsWith("sessions/")).map((w) => [w.path.slice(13), w.data]));
+  assert.deepEqual(Object.keys(s), ["2026-02-01", "2026-02-05", "2026-02-09"]);
+  assert.deepEqual(s["2026-02-05"].flags, ["attendance_only"]); assert.deepEqual(s["2026-02-09"].flags, ["report_only"]); assert.equal(s["2026-02-01"].teacherId, "T2");   // lay GV cua file
+  assert.equal(p.flagged, 2);
+});
+test("danh gia: lay tu bang diem General, nhan xet tu tab RC co cung diem, bo danh gia mau khong khop", () => {
+  const scores = { Speaking: 12, Listening: 10, Pronunciation: 9, Vocabulary: 12, Grammar: 9 };
+  const rep = rep0({ scoreTable: [{ remark: "Entrance", date: "2026-10-17", scores: { Speaking: 10, Listening: 9, Pronunciation: 8, Vocabulary: 10, Grammar: 8 }, level: "A2" }, { remark: "Exam 1", date: "2026-11-21", scores, level: "A2" }, { remark: "Exam 2", date: "", scores: {}, level: "A0" }],
+    rcs: [{ rc: 1, sessions: [], evaluation: { date: "2026-11-21", scores, comments: { "General Review": "tot" } } }, { rc: 2, sessions: [], evaluation: { date: "", scores: { Speaking: 15, Listening: 15, Pronunciation: 15, Vocabulary: 15, Grammar: 15 }, comments: {} } }] });
+  const p = RI.planReport(rep, ctx0()), ev = Object.fromEntries(p.writes.filter((w) => w.path.startsWith("evaluations/")).map((w) => [w.path, w.data]));
+  assert.deepEqual(Object.keys(ev), ["evaluations/ES1_0", "evaluations/ES1_1"]);
+  assert.equal(ev["evaluations/ES1_1"].comments["General Review"], "tot"); assert.equal(ev["evaluations/ES1_1"].kind, "Exam 1"); assert.equal(ev["evaluations/ES1_0"].comments["General Review"], undefined);
+  assert.ok(p.warnings.some((w) => w.includes("RC2"))); assert.equal(p.writes.at(-1).path, "students/ES1");
+  assert.equal(p.writes.at(-1).data.meetLink, "https://meet/x");
+});

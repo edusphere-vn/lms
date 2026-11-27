@@ -4,6 +4,7 @@ import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/
 import { collection, getDocs, doc, getDoc, setDoc, writeBatch, query, where, arrayRemove, arrayUnion } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { renderSchedule, leaveSchedule } from "./schedule.js";
 import { openImport } from "./import-students.js";
+import { renderReports } from "./reports-import.js";
 import { slotsForName, DAYS } from "./grid-core.js";
 
 // ---------- helper DOM (luon dung textContent, khong chen HTML tu du lieu) ----------
@@ -70,9 +71,10 @@ async function render() {
   const my = ++renderSeq, ent = ENTITIES[current];
   const main = $("main"); main.replaceChildren();
   leaveSchedule();
-  $("nav").replaceChildren(...[...Object.entries(ENTITIES), ["schedule", { title: "Lịch giáo viên" }], ["settings", { title: "Cài đặt" }]].map(([key, e]) =>
+  $("nav").replaceChildren(...[...Object.entries(ENTITIES), ["schedule", { title: "Lịch giáo viên" }], ["reports", { title: "Nhập báo cáo" }], ["settings", { title: "Cài đặt" }]].map(([key, e]) =>
     h("button", { "aria-current": String(key === current), "data-nav": key, onclick: () => { current = key; render(); } }, e.title)));
   if (current === "settings") return renderSettings(main);
+  if (current === "reports") return renderReports(main, { db, h, alive: () => my === renderSeq });
   if (current === "schedule") return renderSchedule(main, { db, h, dlg, reload: render, alive: () => my === renderSeq });
   await Promise.all([load(ent.coll), ent.coll === "students" ? Promise.all([load("agencies"), load("teachers")]) : null, ent.account ? loadAccounts() : null]);
   if (my !== renderSeq) return;

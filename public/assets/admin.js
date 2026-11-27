@@ -7,7 +7,7 @@ import { openImport } from "./import-students.js";
 import { renderReports } from "./reports-import.js";
 import { renderPayroll } from "./payroll.js";
 import { renderSessions } from "./sessions-admin.js";
-import { slotsForName, DAYS } from "./grid-core.js";
+import { slotsForName, DAYS, normName } from "./grid-core.js";
 
 // ---------- helper DOM (luon dung textContent, khong chen HTML tu du lieu) ----------
 const h = (tag, attrs = {}, ...kids) => {
@@ -84,20 +84,35 @@ async function render() {
   if (my !== renderSeq) return;
   const cols = ent.fields.filter((f) => !f.hide);
   const rows = cache[ent.coll];
+  // bo loc: o tim kiem (khong dau) + moi truong dang chon (select) la mot bo loc, rieng hoc vien co loc theo giao vien
+  const search = h("input", { type: "search", id: "tblSearch", placeholder: "Tìm theo tên, mã...", style: "width:220px" });
+  const filters = cols.filter((f) => f.type === "select").map((f) => { const opts = (typeof f.options === "function" ? f.options() : f.options).filter(([v]) => v !== "");
+    return { f, el: h("select", { "data-filter": f.k, style: "width:auto" }, h("option", { value: "" }, `${f.label}: tất cả`), opts.map(([v, l]) => h("option", { value: v }, l))) }; });
+  const tfilter = ent.fields.some((f) => f.type === "teachers") ? h("select", { "data-filter": "teacherIds", style: "width:auto" }, h("option", { value: "" }, "Giáo viên: tất cả"), (cache.teachers || []).map((t) => h("option", { value: t.teacherId }, t.name || t.teacherId))) : null;
+  const tbody = h("tbody", {}), count = h("span", { class: "note", id: "tblCount" });
+  const paint = () => {
+    const q = normName(search.value);
+    const vis = rows.filter((r) => (!q || normName([r[ent.id], ...cols.map((f) => display(f, r[f.k])), accountFor(ent, r[ent.id])?.username].join(" ")).includes(q))
+      && filters.every(({ f, el }) => !el.value || String(r[f.k] ?? "") === el.value) && (!tfilter || !tfilter.value || (r.teacherIds || []).includes(tfilter.value)));
+    count.textContent = vis.length === rows.length ? "" : `Hiện ${vis.length}/${rows.length}`;
+    tbody.replaceChildren(...vis.map((r) => {
+      const acc = ent.account ? accountFor(ent, r[ent.id]) : null;
+      return h("tr", { "data-id": r[ent.id] }, cols.map((f) => h("td", {}, display(f, r[f.k]))),
+        h("td", {}, ent.account ? (acc ? `${acc.username}` : "Chưa có") : ""),
+        h("td", { class: "act" }, h("button", { class: "s", onclick: () => openForm(ent, r) }, "Sửa"),
+          ent.account ? h("button", { class: "s", onclick: () => openAccount(ent, r, acc) }, acc ? "Đặt lại mật khẩu" : "Tạo tài khoản") : null,
+          h("button", { class: "s danger", "data-del": r[ent.id], onclick: () => openDelete(ent, r, acc) }, "Xóa")));
+    }));
+  };
+  search.oninput = paint; for (const { el } of filters) el.onchange = paint; if (tfilter) tfilter.onchange = paint;
   main.append(
     h("div", { class: "bar" }, h("h2", {}, `${ent.title} (${rows.length})`), ent.coll === "students" ? h("button", { class: "s", id: "importBtn", onclick: () => openImport({ db, h, dlg, reload: render }) }, "Nhập từ file Excel/CSV") : null,
       h("button", { class: "p", id: "add", onclick: () => openForm(ent) }, `+ Thêm ${ent.title.toLowerCase()}`)),
-    rows.length === 0 ? h("div", { class: "wrap empty" }, "Chưa có dữ liệu.") :
-    h("div", { class: "wrap" }, h("table", {},
-      h("thead", {}, h("tr", {}, cols.map((f) => h("th", {}, f.label)), h("th", {}, ent.account ? "Tài khoản" : ""), h("th", {}, ""))),
-      h("tbody", {}, rows.map((r) => {
-        const acc = ent.account ? accountFor(ent, r[ent.id]) : null;
-        return h("tr", { "data-id": r[ent.id] }, cols.map((f) => h("td", {}, display(f, r[f.k]))),
-          h("td", {}, ent.account ? (acc ? `${acc.username}` : "Chưa có") : ""),
-          h("td", { class: "act" }, h("button", { class: "s", onclick: () => openForm(ent, r) }, "Sửa"),
-            ent.account ? h("button", { class: "s", onclick: () => openAccount(ent, r, acc) }, acc ? "Đặt lại mật khẩu" : "Tạo tài khoản") : null,
-            h("button", { class: "s danger", "data-del": r[ent.id], onclick: () => openDelete(ent, r, acc) }, "Xóa")));
-      })))));
+    ...(rows.length === 0 ? [h("div", { class: "wrap empty" }, "Chưa có dữ liệu.")] : [
+      h("div", { class: "bar", style: "flex-wrap:wrap;gap:8px" }, search, filters.map((x) => x.el), tfilter, count),
+      h("div", { class: "wrap" }, h("table", {},
+        h("thead", {}, h("tr", {}, cols.map((f) => h("th", {}, f.label)), h("th", {}, ent.account ? "Tài khoản" : ""), h("th", {}, ""))), tbody))]));
+  paint();
 }
 
 // ---------- form them/sua ----------

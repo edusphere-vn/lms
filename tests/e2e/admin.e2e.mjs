@@ -255,6 +255,9 @@ await tp.waitForURL("**/app.html**"); await tp.goto("http://localhost:5173/app.h
 ok((await tp.textContent("#weekLabel")).startsWith("23/11") && (await tp.textContent("article.session")).includes("Pham Thanh Thuy B") && (await tp.textContent("article.session")).includes("08:00-08:50"), "giao vien thay buoi cua minh: " + await tp.textContent("main"));
 ok((await tp.locator("article.session").count()) === 1, "chi thay buoi cua minh trong tuan");
 ok((await tp.textContent("#fixedSchedule")).includes("Lịch cố định") && (await tp.textContent("#payHint")).includes("Tạm tính"), "giao vien thay lich co dinh va luong tam tinh: " + (await tp.textContent("#payHint")));
+await tp.fill("#tSearch", "zzzz"); ok((await tp.locator("article.session:visible").count()) === 0, "giao vien loc theo hoc vien"); await tp.fill("#tSearch", "");
+ok((await tp.locator("article.session:visible").count()) === 1, "xoa loc hien lai buoi");
+await tp.selectOption("#tStatus", "done"); ok((await tp.locator("article.session:visible").count()) === 0, "loc da bao cao: chua co buoi nao"); await tp.selectOption("#tStatus", "");
 await tp.selectOption("article.session select", "Present"); await tp.fill("textarea[data-f=topic]", "OXFORD 1"); await tp.fill("textarea[data-f=lesson]", "<i>Unit 1</i>"); await tp.fill("textarea[data-f=feedback]", "Tot");
 await tp.click("article.session button.p"); await tp.waitForSelector("article.session.done");
 const rep = (await fdb.doc("sessions/ES112_2026-11-23").get()).data();
@@ -276,6 +279,10 @@ ok((await sp.textContent("section.report")).includes("ES112") && (await sp.textC
 ok(serrors.length === 0, "trang hoc vien khong loi JS: " + serrors.join(" | "));
 await ctx3.close();
 
+await page.click("nav button[data-nav=students]"); await page.waitForSelector("#tblSearch");
+const nAll = await page.locator("tbody tr[data-id]").count(); await page.fill("#tblSearch", "zzzz-khong-co");
+ok(nAll >= 1 && (await page.locator("tbody tr[data-id]").count()) === 0 && (await page.textContent("#tblCount")).includes("Hiện 0/"), "tab Hoc vien: o tim kiem loc duoc");
+await page.fill("#tblSearch", ""); ok((await page.locator("tbody tr[data-id]").count()) === nAll, "xoa o tim kiem hien lai du lieu");
 await page.click("nav button[data-nav=sessions]"); await page.waitForSelector("#seLoad"); await page.fill("#seFrom", "2026-11-23"); await page.fill("#seTo", "2026-11-29"); await page.click("#seLoad");
 await page.waitForSelector("tr[data-session]", { timeout: 8000 });
 ok((await page.locator("tr[data-session]").count()) >= 1, "tab Buoi hoc liet ke buoi trong tuan");

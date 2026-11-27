@@ -1,6 +1,6 @@
 // Giao diện giáo viên: xem buổi học trong tuần, điểm danh và nhập báo cáo từng buổi.
 import { collection, getDocs, getDoc, doc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { DAYS, rowTime, hhmm, START_MIN, STEP } from "./grid-core.js";
+import { DAYS, rowTime, hhmm, START_MIN, STEP, normName } from "./grid-core.js";
 import { runsOf } from "./session-gen-core.js";
 import { computePayroll, monthRange } from "./payroll-core.js";
 
@@ -33,6 +33,17 @@ export async function startTeacher({ db, profile, main, user }) {
   let week = /^\d{4}-\d{2}-\d{2}$/.test(q || "") ? mondayOf(new Date(Number(q.slice(0, 4)), Number(q.slice(5, 7)) - 1, Number(q.slice(8)))) : mondayOf(new Date());
 
   const countText = () => { const a = iso(week), b = new Date(week); b.setDate(b.getDate() + 6); const l = sessions.filter((s) => s.date >= a && s.date <= iso(b)); return `${l.length} buổi, đã báo cáo ${l.filter((s) => s.reportedAt).length}`; };
+  // bo loc chi an/hien the (khong ve lai) de khong mat noi dung dang go do
+  let fq = "", fst = "";
+  const fsearch = h("input", { type: "search", id: "tSearch", placeholder: "Tìm học viên...", style: "width:200px", oninput: (e) => { fq = normName(e.target.value); applyFilter(); } });
+  const fstat = h("select", { id: "tStatus", style: "width:auto", onchange: (e) => { fst = e.target.value; applyFilter(); } }, [["", "Mọi buổi"], ["todo", "Chưa báo cáo"], ["done", "Đã báo cáo"]].map(([v, l]) => h("option", { value: v }, l)));
+  function applyFilter() {
+    for (const el of main.querySelectorAll("article.session")) {
+      const ok = (!fq || el.dataset.names.includes(fq)) && (!fst || (fst === "done") === el.classList.contains("done"));
+      el.hidden = !ok;
+    }
+    for (const sec of main.querySelectorAll("section")) sec.hidden = ![...sec.querySelectorAll("article.session")].some((a) => !a.hidden);
+  }
   function paint() {
     const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(week); d.setDate(d.getDate() + i); return iso(d); });
     const inWeek = sessions.filter((s) => s.date >= days[0] && s.date <= days[6]);
@@ -43,11 +54,12 @@ export async function startTeacher({ db, profile, main, user }) {
         h("strong", { id: "weekLabel" }, `${dm(days[0])} - ${dm(days[6])}/${days[6].slice(0, 4)}`),
         h("button", { class: "s", onclick: () => { week = mondayOf(new Date()); paint(); } }, "Tuần này"),
         h("button", { class: "s", id: "nextWeek", onclick: () => { week.setDate(week.getDate() + 7); paint(); } }, "Tuần sau →"),
-        h("span", { class: "note", id: "weekCount" }, countText())),
+        h("span", { class: "note", id: "weekCount" }, countText()), fsearch, fstat),
       inWeek.length ? days.map((d, i) => {
         const list = inWeek.filter((s) => s.date === d).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
         return list.length ? h("section", {}, h("h3", {}, `${DAYS[i]}, ${dm(d)}`), list.map(card)) : null;
       }) : h("p", { class: "empty" }, "Tuần này chưa có buổi học nào. Admin sẽ tạo buổi học từ lịch.")].flat(Infinity).filter(Boolean));
+    applyFilter();
   }
 
   const names = (scs) => scs.map((sc) => students[sc]?.fullName || sc).join(", ");
@@ -63,7 +75,7 @@ export async function startTeacher({ db, profile, main, user }) {
   function card(s) {
     const locked = !!s.locked, att = { ...(s.attendance || {}) }, msg = h("span", { class: "note" }, s.reportedAt ? `Đã lưu ${new Date(s.reportedAt).toLocaleString("vi-VN")}` : "");
     const field = (label, key, ph) => [h("label", {}, label), h("textarea", { "data-f": key, rows: "3", placeholder: ph, disabled: locked }, s[key] || "")];
-    const el = h("article", { class: "session" + (s.reportedAt ? " done" : ""), "data-id": s.id },
+    const el = h("article", { class: "session" + (s.reportedAt ? " done" : ""), "data-id": s.id, "data-names": normName(s.scs.map((sc) => students[sc]?.fullName || sc).join(" ") + " " + s.scs.join(" ")) },
       h("header", {}, h("strong", {}, s.time ? `${s.time}-${endTime(s.time, s.minutes || 25)}` : "Chưa rõ giờ"), h("span", { class: "note" }, `${s.minutes || 25} phút`),
         s.rcNo ? h("span", { class: "tag" }, `RC${s.rcNo}${s.rcSeq ? " · buổi " + s.rcSeq : ""}`) : null, locked ? h("span", { class: "tag" }, "Đã chốt lương") : null),
       s.scs.map((sc) => h("div", { class: "stu" }, h("span", {}, students[sc]?.fullName || sc),

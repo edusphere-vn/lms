@@ -258,3 +258,12 @@ test("luong: 25p/50p, vang, huy, lop nhom, don gia rieng cua giao vien, ky thang
   assert.deepEqual(PY.monthRange("2026-11"), { from: "2026-11-01", to: "2026-11-30" });
   assert.ok(PY.payrollCsv(rows, "2026-11").includes("TỔNG"));
 });
+
+import * as RP from "../public/assets/report-core.js";
+test("bao cao hoc vien: an buoi huy, dem 10 buoi/RC, moi nhat truoc, danh gia cua dung hoc vien", () => {
+  const ss = Array.from({ length: 12 }, (_, i) => ({ id: "s" + i, date: `2026-01-${String(i + 1).padStart(2, "0")}`, scs: ["A"], attendance: { A: i === 2 ? "Cancelled" : "Present" } }));
+  ss.push({ id: "x", date: "2026-01-20", scs: ["B"], attendance: { B: "Present" } });
+  const r = RP.buildReport({ sc: "A", sessions: ss, evaluations: [{ sc: "A", rcNo: 1 }, { sc: "B", rcNo: 1 }] });
+  assert.equal(r.counted, 11); assert.equal(r.items[0].id, "s11"); assert.ok(!r.items.some((s) => s.id === "s2"));
+  assert.deepEqual([r.rcNo, r.inRc], [2, 1]); assert.equal(r.evaluations.length, 1);
+});

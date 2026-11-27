@@ -41,6 +41,7 @@
     import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
     import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
     import { startTeacher } from "./assets/teacher.js";
+    import { startStudent, startAgency } from "./assets/viewer.js";
     document.getElementById("out").onclick = () => signOut(auth);
     onAuthStateChanged(auth, async (u) => {
       if (!u) { location.href = "index.html"; return; }
@@ -49,6 +50,7 @@
       document.getElementById("who").textContent = p?.displayName || u.email;
       const main = document.getElementById("main");
       if (p?.role === "teacher" && p.teacherId) { try { await startTeacher({ db, profile: p, main, user: u }); } catch (e) { main.textContent = "Không tải được lịch: " + e.message; } }
+      else if (p?.role === "student" || p?.role === "agency") { try { await (p.role === "student" ? startStudent : startAgency)({ db, user: u, profile: p, main }); } catch (e) { main.textContent = "Không tải được báo cáo: " + (e.code || e.message); } }
       else main.textContent = `Giao diện cho vai trò ${p?.role || "này"} đang được xây dựng.`;
     });
   </script>

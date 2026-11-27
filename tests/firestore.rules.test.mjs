@@ -12,6 +12,8 @@ await env.withSecurityRulesDisabled(async (c) => {
   await setDoc(doc(d,"billing/b1"), { invoice: 100 });
   await setDoc(doc(d,"public_reports/abc"), { sc:"ES112" });
   await setDoc(doc(d,"evaluations/e1"), { sc:"ES112", teacherId:"T1", agencyId:"OEC", status:"Draft" });
+  await setDoc(doc(d,"evaluations/e2"), { sc:"ES112", teacherId:"T1", agencyId:"OEC", status:"Approved" });
+  await setDoc(doc(d,"enrollments/ES112_2026"), { sc:"ES112", agencyId:"OEC", teacherId:"T1" });
 });
 const as = (uid, claims) => env.authenticatedContext(uid, claims).firestore();
 const t = as("u1",{role:"teacher",teacherId:"T1"}), t2 = as("u2",{role:"teacher",teacherId:"T2"});
@@ -54,5 +56,15 @@ await T("teacher lists own students by array-contains", assertSucceeds(getDocs(q
 await T("teacher cannot list students of others", assertFails(getDocs(query(collection(t,"students"), where("teacherIds","array-contains","T2")))));
 await T("teacher saves attendance map + report", assertSucceeds(updateDoc(doc(t,"sessions/s1"), { attendance:{ ES112:"Absent" }, topic:"x", lesson:"y", feedback:"z", reportedAt:1 })));
 await T("anon blocked from sessions", assertFails(getDoc(doc(anon,"sessions/s1"))));
+await T("student lists own sessions", assertSucceeds(getDocs(query(collection(s,"sessions"), where("scs","array-contains","ES112")))));
+await T("student cannot list others' sessions", assertFails(getDocs(query(collection(s,"sessions"), where("scs","array-contains","ES999")))));
+await T("student lists own approved evaluations", assertSucceeds(getDocs(query(collection(s,"evaluations"), where("sc","==","ES112"), where("status","==","Approved")))));
+await T("student cannot list evaluations without status filter", assertFails(getDocs(query(collection(s,"evaluations"), where("sc","==","ES112")))));
+await T("student lists own enrollments", assertSucceeds(getDocs(query(collection(s,"enrollments"), where("sc","==","ES112")))));
+await T("agency lists its sessions/students/evaluations/enrollments", Promise.all([
+  assertSucceeds(getDocs(query(collection(ag,"sessions"), where("agencyIds","array-contains","OEC")))),
+  assertSucceeds(getDocs(query(collection(ag,"students"), where("agencyId","==","OEC")))),
+  assertSucceeds(getDocs(query(collection(ag,"evaluations"), where("agencyId","==","OEC"), where("status","==","Approved")))),
+  assertSucceeds(getDocs(query(collection(ag,"enrollments"), where("agencyId","==","OEC"))))]));
 console.log("pass",pass,"fail",fail);
 await env.cleanup();

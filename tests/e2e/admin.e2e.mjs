@@ -263,6 +263,18 @@ await tp.goto("http://localhost:5173/app.html?week=2026-09-07"); await tp.waitFo
 ok(terrors.length === 0, "trang giao vien khong loi JS: " + terrors.join(" | "));
 await ctx2.close();
 
+// hoc vien dang nhap va xem bao cao cua minh
+const sUser = await getAuth().createUser({ email: "es112@lms.edusphere.vn", password: "hv-mat-khau-1", displayName: "Hoc Vien" });
+await getAuth().setCustomUserClaims(sUser.uid, { role: "student", sc: "ES112" });
+await fdb.doc(`users/${sUser.uid}`).set({ username: "es112", displayName: "Hoc Vien", role: "student", sc: "ES112", mustChangePassword: false });
+const ctx3 = await browser.newContext(); const sp = await ctx3.newPage(); const serrors = []; sp.on("pageerror", (e) => serrors.push(e.message));
+await ctx3.route(/gstatic\.com\/firebasejs\/11\.0\.2\/firebase-(app|auth|firestore)\.js/, (r) => r.fulfill({ contentType: "text/javascript", body: `export * from "http://localhost:5173/__fb/all.js";` }));
+await sp.goto("http://localhost:5173/index.html"); await sp.fill("#username", "es112"); await sp.fill("#password", "hv-mat-khau-1"); await sp.click("#loginForm button");
+await sp.waitForURL("**/app.html**"); await sp.waitForSelector("section.report", { timeout: 8000 }).catch(async () => { console.log("STUDENT FAIL:", await sp.textContent("main"), serrors.join(" | ")); process.exit(2); });
+ok((await sp.textContent("section.report")).includes("ES112") && (await sp.textContent("section.report")).includes("buổi"), "hoc vien xem duoc bao cao cua minh");
+ok(serrors.length === 0, "trang hoc vien khong loi JS: " + serrors.join(" | "));
+await ctx3.close();
+
 await page.click("nav button[data-nav=payroll]"); await page.waitForSelector("#payMonth"); await page.fill("#payMonth", "2026-11"); await page.click("#payGo");
 await page.waitForSelector("tr[data-teacher=T2]", { timeout: 8000 });
 ok((await page.textContent("main")).includes("Tổng") && (await page.locator("#payCsv").count()) === 1, "tab Luong tinh duoc luong thang 11: " + (await page.textContent("main")).slice(0, 200));

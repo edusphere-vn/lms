@@ -2,6 +2,8 @@ import { auth, db, API_BASE } from "./firebase.js";
 import { CONFIG, COURSES, RUBRICS } from "./defaults.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import { collection, getDocs, doc, getDoc, setDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { renderSchedule, leaveSchedule } from "./schedule.js";
+import { openImport } from "./import-students.js";
 
 // ---------- helper DOM (luon dung textContent, khong chen HTML tu du lieu) ----------
 const h = (tag, attrs = {}, ...kids) => {
@@ -14,11 +16,12 @@ const h = (tag, attrs = {}, ...kids) => {
 };
 const $ = (id) => document.getElementById(id);
 const dlg = $("dlg");
+dlg.addEventListener("close", () => { dlg.className = ""; });
 const genPassword = () => { const a = new Uint32Array(10); crypto.getRandomValues(a); return Array.from(a, (n) => "abcdefghjkmnpqrstuvwxyz23456789"[n % 31]).join(""); };
 
 // ---------- khai bao cac bang quan ly ----------
 const YESNO = [["", "—"], ["true", "Có"], ["false", "Không"]];
-const STATUS = [["Active", "Đang hoạt động"], ["Inactive", "Ngưng"]];
+const STATUS = [["Active", "Đang hoạt động"], ["Hold", "Tạm hoãn (Hold)"], ["Inactive", "Ngưng"]];
 const ENTITIES = {
   teachers: { title: "Giáo viên", coll: "teachers", id: "teacherId", role: "teacher", account: true, fields: [
     { k: "teacherId", label: "Mã GV", req: true }, { k: "name", label: "Tên", req: true },
@@ -59,17 +62,22 @@ const display = (f, v) => {
   if (f.type === "select") { const o = (typeof f.options === "function" ? f.options() : f.options).find(([val]) => val === v); return o ? o[1] : v; }
   return v;
 };
+let renderSeq = 0;   // chi lan ve moi nhat duoc phep ghi len man hinh (bam tab nhanh khong bi de)
 async function render() {
-  const ent = ENTITIES[current];
+  const my = ++renderSeq, ent = ENTITIES[current];
   const main = $("main"); main.replaceChildren();
-  $("nav").replaceChildren(...[...Object.entries(ENTITIES), ["settings", { title: "Cài đặt" }]].map(([key, e]) =>
-    h("button", { "aria-current": String(key === current), onclick: () => { current = key; render(); } }, e.title)));
+  leaveSchedule();
+  $("nav").replaceChildren(...[...Object.entries(ENTITIES), ["schedule", { title: "Lịch giáo viên" }], ["settings", { title: "Cài đặt" }]].map(([key, e]) =>
+    h("button", { "aria-current": String(key === current), "data-nav": key, onclick: () => { current = key; render(); } }, e.title)));
   if (current === "settings") return renderSettings(main);
+  if (current === "schedule") return renderSchedule(main, { db, h, alive: () => my === renderSeq });
   await Promise.all([load(ent.coll), ent.coll === "students" ? load("agencies") : null, ent.account ? loadAccounts() : null]);
+  if (my !== renderSeq) return;
   const cols = ent.fields.filter((f) => !f.hide);
   const rows = cache[ent.coll];
   main.append(
-    h("div", { class: "bar" }, h("h2", {}, `${ent.title} (${rows.length})`), h("button", { class: "p", id: "add", onclick: () => openForm(ent) }, `+ Thêm ${ent.title.toLowerCase()}`)),
+    h("div", { class: "bar" }, h("h2", {}, `${ent.title} (${rows.length})`), ent.coll === "students" ? h("button", { class: "s", id: "importBtn", onclick: () => openImport({ db, h, dlg, reload: render }) }, "Nhập từ file Excel/CSV") : null,
+      h("button", { class: "p", id: "add", onclick: () => openForm(ent) }, `+ Thêm ${ent.title.toLowerCase()}`)),
     rows.length === 0 ? h("div", { class: "wrap empty" }, "Chưa có dữ liệu.") :
     h("div", { class: "wrap" }, h("table", {},
       h("thead", {}, h("tr", {}, cols.map((f) => h("th", {}, f.label)), h("th", {}, ent.account ? "Tài khoản" : ""), h("th", {}, ""))),

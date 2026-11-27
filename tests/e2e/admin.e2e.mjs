@@ -1,11 +1,12 @@
 // E2E tren trinh duyet: dang nhap, doi mat khau, trang admin. Chay: npm run test:e2e (can Java + Chromium cho Playwright).
 // Bundle Firebase SDK duoc dung thay cho CDN gstatic (route trong Playwright) de chay offline.
 import http from "http"; import fs from "fs"; import path from "path";
-import { chromium } from "playwright";
+import { chromium } from "playwright"; import { createRequire } from "module"; import os from "os";
+const XLSX = createRequire(import.meta.url)("xlsx");
 import { initializeApp } from "firebase-admin/app"; import { getAuth } from "firebase-admin/auth"; import { getFirestore } from "firebase-admin/firestore";
 
 const ROOT = new URL("../../public", import.meta.url).pathname, FB = new URL("./.cache/all.js", import.meta.url).pathname;
-const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".LICENSE": "text/plain" };
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x"); const p = u.pathname === "/__fb/all.js" ? FB : path.join(ROOT, u.pathname === "/" ? "index.html" : u.pathname);
   fs.readFile(p, (e, d) => { if (e) { res.writeHead(404); res.end(); } else { res.writeHead(200, { "content-type": types[path.extname(p)] || "text/plain", "access-control-allow-origin": "*" }); res.end(d); } });
@@ -16,7 +17,7 @@ const user = await getAuth().createUser({ email: "peter@lms.edusphere.vn", passw
 await getAuth().setCustomUserClaims(user.uid, { role: "admin" });
 await getFirestore().doc(`users/${user.uid}`).set({ username: "peter", displayName: "Peter", role: "admin", mustChangePassword: true });
 
-const browser = await chromium.launch(); const page = await browser.newPage();
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}); const page = await browser.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(e.message)); page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 await page.route(/gstatic\.com\/firebasejs\/11\.0\.2\/firebase-(app|auth|firestore)\.js/, (r) => r.fulfill({ contentType: "text/javascript", body: `export * from "http://localhost:5173/__fb/all.js";` }));
 let apiBody = null;
@@ -42,12 +43,12 @@ await page.click("#seed"); await page.waitForFunction(() => /Đã thêm 0/.test(
 ok(true, "nap lan 2 khong them gi");
 
 // 3. Them agency, giao vien, hoc vien
-const add = async (nav, vals) => { await page.click(`nav button:has-text('${nav}')`); await page.click("#add"); await page.waitForSelector("dialog[open]", {timeout:5000}).catch(async()=>{ console.log("DIALOG NOT OPEN. errors:", errors.join(" | ")); console.log((await page.content()).slice(0,1500)); process.exit(2); });
+const add = async (nav, vals) => { await page.click(`nav button:text-is('${nav}')`); await page.waitForFunction((n) => document.querySelector(".bar h2")?.textContent.startsWith(n), nav, { timeout: 8000 }).catch(async () => { console.log("NAV FAIL", nav, "| h2:", await page.textContent(".bar h2").catch(() => "-"), "| errors:", errors.join(" | ")); process.exit(2); }); await page.click("#add"); await page.waitForSelector("dialog[open]", {timeout:5000}).catch(async()=>{ console.log("DIALOG NOT OPEN. errors:", errors.join(" | ")); console.log((await page.content()).slice(0,1500)); process.exit(2); });
   for (const [i, v] of vals) await page.locator("dialog input:not([type=checkbox]), dialog select").nth(i).fill(v, {timeout:4000});
   await page.click("dialog button[type=submit]"); await page.waitForSelector("dialog[open]", { state: "hidden" }); };
 await add("Agency", [[0, "OEC"], [1, "OEC Education"]]);
 await add("Giáo viên", [[0, "T1"], [1, "Alden"], [3, "100"], [4, "200"]]);
-await page.click("nav button:has-text('Học viên')"); await page.click("#add");
+await page.click("nav button:text-is('Học viên')"); await page.waitForFunction(() => document.querySelector(".bar h2")?.textContent.startsWith("Học viên")); await page.click("#add");
 ok((await page.locator("dialog select option").allTextContents()).some((t) => t.includes("OEC Education")), "dropdown agency co du lieu");
 await page.locator("dialog input").nth(0).fill("ES112"); await page.locator("dialog input").nth(1).fill("Pham Thanh Thuy");
 await page.locator("dialog select").first().selectOption("OEC"); await page.locator("dialog input[type=checkbox]").check();
@@ -65,11 +66,96 @@ await page.click("tr[data-id=ES112] button:has-text('Sửa')"); await page.locat
 await page.waitForSelector("tr[data-id=ES112] td:has-text('Pham Thanh Thuy B')"); ok(true, "sua hoc vien");
 
 // 4. Tao tai khoan qua Worker (gia lap)
-await page.click("nav button:has-text('Giáo viên')");
+await page.click("nav button:text-is('Giáo viên')");
 await page.click("tr[data-id=T1] button:has-text('Tạo tài khoản')");
 await page.fill("dialog input >> nth=0", "alden"); await page.click("dialog button[type=submit]");
 await page.waitForSelector("dialog .msg.ok");
 ok(apiBody?.url.endsWith("/api/users/create") && apiBody.auth?.startsWith("Bearer ") && apiBody.body.role === "teacher" && apiBody.body.teacherId === "T1" && apiBody.body.username === "alden" && apiBody.body.password.length >= 8, "goi Worker dung: " + JSON.stringify(apiBody?.body));
+
+
+// 5. Luoi lich: go, Enter, keo o, dan TSV, sao chep, xoa, hoan tac, mau, trung gio, dem o
+const fdb = getFirestore();
+await fdb.doc("teachers/T2").set({ name: "Miles" });
+await fdb.doc("enrollments/e1").set({ sc: "ES112", courseId: "IELTS_SP", teacherId: "T1" });
+await page.click("dialog button:has-text('Đóng')");
+await page.click("nav button[data-nav=schedule]"); await page.waitForSelector("table.grid td.cell");
+ok((await page.locator(".gtab").allTextContents()).join("|") === "Alden · 0|Miles · 0", "tab giao vien + dem o: " + await page.locator(".gtab").allTextContents());
+const cell = (r, c) => page.locator(`td.cell[data-r="${r}"][data-c="${c}"]`);
+await cell(2, 1).click(); await page.keyboard.type("Pham Thanh Thuy B"); await page.keyboard.press("Enter");
+ok((await cell(2, 1).textContent()) === "Pham Thanh Thuy B" && /ielts/.test(await cell(2, 1).getAttribute("class")), "go ten + mau IELTS theo khoa hoc");
+ok(await cell(3, 1).evaluate((el) => el.classList.contains("focus")), "Enter xuong o duoi");
+await page.waitForFunction(() => document.getElementById("gridStatus").textContent === "Đã lưu");
+ok((await fdb.doc("schedule/T1").get()).data().cells["1_0700"].t === "Pham Thanh Thuy B", "luu schedule/T1 vao Firestore");
+// keo o xuong 3 hang
+await cell(2, 1).click(); const fh = await page.locator(".fh").boundingBox(), tgt = await cell(5, 1).boundingBox();
+await page.mouse.move(fh.x + 4, fh.y + 4); await page.mouse.down(); await page.mouse.move(tgt.x + 20, tgt.y + 10, { steps: 6 }); await page.mouse.up();
+ok((await cell(5, 1).textContent()) === "Pham Thanh Thuy B" && (await cell(3, 1).textContent()) === "Pham Thanh Thuy B", "keo o dien lap");
+await page.waitForFunction(() => document.getElementById("gridStatus").textContent === "Đã lưu");
+ok((await page.locator(".gtab").first().textContent()) === "Alden · 4", "dem o sau khi keo");
+// dan TSV (nhu copy tu Google Sheets)
+await cell(10, 0).click();
+await page.evaluate(() => { const dt = new DataTransfer(); dt.setData("text/plain", 'A1\tB1\n"A2 x"\tB2'); document.getElementById("gridwrap").dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true })); });
+ok((await cell(11, 0).textContent()) === "A2 x" && (await cell(10, 1).textContent()) === "B1", "dan TSV");
+// sao chep vung
+await cell(10, 0).click(); await cell(11, 1).click({ modifiers: ["Shift"] });
+const copied = await page.evaluate(() => { const dt = new DataTransfer(); document.getElementById("gridwrap").dispatchEvent(new ClipboardEvent("copy", { clipboardData: dt, bubbles: true, cancelable: true })); return dt.getData("text/plain"); });
+ok(copied === 'A1\tB1\nA2 x\tB2', "sao chep TSV: " + JSON.stringify(copied));
+// xoa + hoan tac
+await page.keyboard.press("Delete"); ok((await cell(10, 0).textContent()) === "" && (await cell(11, 1).textContent()) === "", "Delete xoa vung");
+await page.keyboard.press("Control+z"); ok((await cell(11, 0).textContent()) === "A2 x", "Ctrl+Z hoan tac");
+// mau thu cong
+await cell(20, 3).click(); await page.click("#kNa"); ok(/\bna\b/.test(await cell(20, 3).getAttribute("class")), "dat mau Khong ranh");
+await page.waitForFunction(() => document.getElementById("gridStatus").textContent === "Đã lưu");
+// trung gio voi giao vien khac
+await fdb.doc("schedule/T2").set({ teacherId: "T2", cells: { "1_0700": { t: "pham thanh thuy b" } } });
+await page.click("nav button[data-nav=teachers]"); await page.click("nav button[data-nav=schedule]"); await page.waitForSelector("td.cell.conflict");
+ok(/conflict/.test(await cell(2, 1).getAttribute("class")), "o trung gio bi to vien do");
+if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT + "/grid.png" });
+// ten gia lap XSS khong chen HTML
+await cell(30, 6).click(); await page.keyboard.type("<img src=x onerror=window.__xss=1>"); await page.keyboard.press("Enter");
+ok(!(await page.evaluate(() => window.__xss)) && (await page.locator("table.grid img").count()) === 0, "o lich khong chen HTML");
+
+// 6. Nhap danh sach hoc vien tu xlsx (du lieu gia lap)
+const H = ["SC", "Agency", "Name", "Course", "Period", "Class", "Skd", "Length", "VTime", "Start", "Mo", "End", "Year", "Invoice", "Paid", "Status", "Type", "Teacher"];
+const ser = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8)) / 86400000 + 25569;
+const R = (sc, ag, name, course, skd, t, st, en, paid, status, type, teacher, meet) => [sc, ag, name, course, 5, 10, skd, 50, t, ser(st), 8, ser(en), 2026, null, paid, status, type, teacher, meet];
+const aoa = [H,
+  R("ES9001", "Smart Alpha", "Le Binh Minh", "ESL Speaking", "Tue-Thu", 20 / 24, "2026-08-13", "2026-09-17", "Paid", "Done", "New ", "Alden", "https://meet.google.com/aaa-bbbb-ccc"),
+  R("ES9001", "smart alpha", "Le Binh Minh", "ESL Speaking", "Tue-Thu", 20 / 24, "2026-09-20", "2026-10-25", "", "Processing", "Extend", "Alden"),
+  R("ES9001", "smart alpha", "Le Binh Minh", "ESL Speaking", "Tue-Thu", 20 / 24, "2026-09-20", "2026-10-25", "", "Processing", "Extend", "Alden"),   // dong trung
+  R("ES9002", "Eduphil", "Mai Anh", "IELTS Speaking", "Mon-Wed-Fri", 21 / 24, "2026-07-01", "2026-08-05", "Paid", "Cancelled", "New", "Kristea"),   // Cancelled + Paid
+  R("ES9003", "Eduphil", "Nguyen Thi Thịnh", "Visa Interview", "MTWTF", 9 / 24, "2026-09-04", "2026-08-19", "", "Hold", "New", "Krishtea"),
+  [null, null, "Tong ket", null, null, null, "Total Classes"]];
+const wbx = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wbx, XLSX.utils.aoa_to_sheet([["Danh sach"]]), "Ghi chu"); XLSX.utils.book_append_sheet(wbx, XLSX.utils.aoa_to_sheet(aoa), "SL-Going");
+const xlsxPath = path.join(os.tmpdir(), "sl-going-test.xlsx"); XLSX.writeFile(wbx, xlsxPath);
+await page.click("nav button[data-nav=students]"); await page.click("#importBtn");
+await page.setInputFiles("#impFile", xlsxPath); await page.waitForSelector("#impGo");
+ok((await page.inputValue("#impSheet")) === "SL-Going", "tu chon sheet SL-Going");
+ok((await page.textContent("#impPreview p")).includes("Đọc được 5 dòng, bỏ qua 1 dòng"), "doc 5 dong, bo qua 1: " + await page.textContent("#impPreview p"));
+ok((await page.locator("tr.flagged").count()) === 3, "3 dong can kiem (trung, huy+paid, ngay sai): " + await page.locator("tr.flagged").count());
+ok((await page.textContent("#impPreview strong")).startsWith("Sẽ nhập 4 gói cho 3 học viên"), "ke hoach nhap: " + await page.textContent("#impPreview strong"));
+if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT + "/import.png" });
+// Kristea ~ Krishtea la cung mot nguoi: chon cung giao vien moi => van tao 2 GV moi vi chua gop; kiem tra goi y hien
+ok((await page.textContent("tr[data-teacher=kristea]")).includes("Krishtea") || (await page.textContent("tr[data-teacher=krishtea]")).includes("Kristea"), "goi y ten giao vien gan giong");
+await page.click("#impGo"); await page.waitForFunction(() => /Xong\./.test(document.querySelector("dialog .msg")?.textContent || ""));
+const sdb = fdb;
+const st = (await sdb.doc("students/ES9001").get()).data();
+ok(st.fullName === "Le Binh Minh" && st.agencyId === "SMART-ALPHA" && st.status === "Active" && st.meetLink === "https://meet.google.com/aaa-bbbb-ccc" && st.teacherIds.length === 1, "students/ES9001: " + JSON.stringify(st));
+const en = (await sdb.collection("enrollments").where("sc", "==", "ES9001").get()).docs.map((d) => d.id).sort();
+ok(JSON.stringify(en) === '["ES9001_2026-08-13","ES9001_2026-09-20"]', "2 goi cua ES9001, dong trung bi bo: " + en);
+const e1 = (await sdb.doc("enrollments/ES9001_2026-08-13").get()).data();
+ok(e1.courseId === "ESL_SP" && e1.minutes === 50 && JSON.stringify(e1.days) === "[1,3]" && e1.startTime === "20:00" && e1.kind === "New" && !("paid" in e1), "enrollment dung, khong chua thong tin thu tien");
+ok((await sdb.doc("billing/ES9001_2026-08-13").get()).data().paid === "Paid", "billing tach rieng");
+ok((await sdb.doc("enrollments/ES9002_2026-07-01").get()).data().flags.includes("cancelled_paid"), "co 'cancelled_paid' tren goi huy + Paid");
+ok((await sdb.doc("agencies/SMART-ALPHA").get()).data().name === "Smart Alpha", "tao agency gop hoa/thuong");
+const tnames = (await sdb.collection("teachers").get()).docs.map((d) => d.data().name).sort();
+ok(JSON.stringify(tnames) === '["Alden","Krishtea","Kristea","Miles"]' || tnames.includes("Kristea"), "tao giao vien moi, giu Alden (T1): " + tnames);
+const before = (await sdb.collection("enrollments").get()).size;
+await page.click("dialog button:has-text('Đóng')");
+await page.click("#importBtn"); await page.setInputFiles("#impFile", xlsxPath); await page.waitForSelector("#impGo"); await page.click("#impGo");
+await page.waitForFunction(() => /Xong\./.test(document.querySelector("dialog .msg")?.textContent || ""));
+ok((await sdb.collection("enrollments").get()).size === before && (await sdb.collection("teachers").get()).size === tnames.length, "nhap lai khong tao ban trung");
+await page.click("dialog button:has-text('Đóng')");
 
 ok(errors.filter((e) => !/emulator|Failed to load resource/i.test(e)).length === 0, "khong co loi JS: " + errors.join(" | "));
 console.log("pass", pass);

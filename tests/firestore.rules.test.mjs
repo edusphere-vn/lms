@@ -40,6 +40,13 @@ await T("user clears mustChangePassword", assertSucceeds(updateDoc(doc(as("u1",{
 await T("user cannot set mustChangePassword true", assertFails(updateDoc(doc(as("u1",{role:"teacher"}),"users/u1"), { mustChangePassword:true })));
 await T("student cannot see draft evaluation", assertFails(getDoc(doc(s,"evaluations/e1"))));
 await T("teacher cannot approve own evaluation", assertFails(updateDoc(doc(t,"evaluations/e1"), { status:"Approved" })));
+await T("admin writes schedule", assertSucceeds(setDoc(doc(a,"schedule/T1"), { teacherId:"T1", cells:{ "0_0600":{ t:"An" } } })));
+await T("teacher reads own schedule", assertSucceeds(getDoc(doc(t,"schedule/T1"))));
+await T("teacher cannot read others' schedule", assertFails(getDoc(doc(t2,"schedule/T1"))));
+await T("teacher cannot edit schedule", assertFails(setDoc(doc(t,"schedule/T1"), { teacherId:"T1", cells:{} })));
+await T("student cannot read schedule", assertFails(getDoc(doc(s,"schedule/T1"))));
+await T("admin writes enrollment", assertSucceeds(setDoc(doc(a,"enrollments/ES112_2026-08-10"), { sc:"ES112", teacherId:"T1", courseId:"ESL_SP" })));
+await T("teacher cannot read billing of imported package", assertFails(getDoc(doc(t,"billing/ES112_2026-08-10"))));
 await T("anon blocked from sessions", assertFails(getDoc(doc(anon,"sessions/s1"))));
 console.log("pass",pass,"fail",fail);
 await env.cleanup();

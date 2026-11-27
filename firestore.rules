@@ -69,6 +69,12 @@ service cloud.firestore {
     }
     match /billing/{id}  { allow read, write: if isAdmin(); }
 
+    // ---------- lich tuan lap lai cua giao vien (luoi lich): chi admin sua, giao vien xem lich cua minh ----------
+    match /schedule/{teacherId} {
+      allow read: if isAdmin() || (isTeacher() && request.auth.token.teacherId == teacherId);
+      allow write: if isAdmin();
+    }
+
     // ---------- buoi hoc (lich + attendance + daily report) ----------
     // Mot buoi co the co nhieu hoc vien (lop nhom): scs = danh sach SC, agencyIds = agency tuong ung.
     // Truong locked do Worker dat khi chot luong thang; khi do chi Admin SDK sua duoc.

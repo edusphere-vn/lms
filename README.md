@@ -34,3 +34,12 @@ Giai đoạn 0 (đang làm): khung repo, luật bảo mật, đăng nhập, nh�
 2. `cd worker && npx wrangler login`, rồi `npx wrangler secret put FIREBASE_SERVICE_ACCOUNT` và dán toàn bộ nội dung file JSON.
 3. Sửa `ALLOWED_ORIGINS` trong `worker/wrangler.toml` thành domain thật của giao diện (lms.edusphere.vn và địa chỉ `*.pages.dev`), rồi `npx wrangler deploy`.
 4. Worker xác minh ID token Firebase của người gọi (claim `role = admin`), tạo user với custom claims (role, teacherId/sc/agencyId), ghi `users/{uid}` và đặt `mustChangePassword`.
+
+## Kiểm thử
+
+- `npm run test:core`: lõi lưới lịch và nhập danh sách (không cần trình duyệt).
+- `npm run test:rules`: luật Firestore trên emulator.
+- `npm run test:worker`: Worker tạo tài khoản.
+- `npm run test:e2e`: trình duyệt thật trên emulator (đặt `CHROMIUM_PATH` nếu Playwright không tìm thấy trình duyệt).
+
+File Excel thật của trung tâm không được đưa vào repo (repo công khai); các test dùng dữ liệu giả lập.

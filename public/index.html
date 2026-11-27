@@ -4,17 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Edusphere LMS - Đăng nhập</title>
+  <link rel="stylesheet" href="assets/theme.css">
   <style>
-    :root { --bg:#F0F9FF; --card:#fff; --ink:#1E293B; --muted:#64748B; --accent:#3B82F6; --err:#F43F5E; }
-    * { box-sizing: border-box; }
-    body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, sans-serif; padding:16px; }
-    main { width:100%; max-width:380px; background:var(--card); border-radius:12px; padding:28px; box-shadow:0 1px 3px rgba(0,0,0,.12); }
+    body { min-height:100vh; display:grid; place-items:center; padding:16px; }
+    main { width:100%; max-width:380px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:32px; }
     h1 { font-size:20px; margin:0 0 4px; }
     p.sub { color:var(--muted); margin:0 0 20px; font-size:14px; }
-    label { display:block; font-size:14px; margin:12px 0 4px; }
-    input { width:100%; padding:10px 12px; border:1px solid #c5ccd3; border-radius:8px; font:inherit; background:transparent; color:inherit; }
-    button { width:100%; margin-top:20px; padding:11px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
-    .msg { color:var(--err); min-height:1.4em; font-size:14px; margin-top:12px; }
+    form button { width:100%; margin-top:20px; padding:10px; background:var(--accent); border:1px solid var(--accent); color:#fff; border-radius:var(--r-sm); font-weight:600; cursor:pointer; }
+    form button:hover { background:var(--accent-ink); }
+    .msg { color:var(--err); }
   </style>
 </head>
 <body>

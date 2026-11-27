@@ -7,7 +7,7 @@ import { noticesView } from "./notices-view.js";
 import { computePayroll, monthRange } from "./payroll-core.js";
 import { sessionStatus } from "./sessions-filter.js";
 import { isCounted } from "./rc-core.js";
-import { openDossier, STATUS_LABEL, rcOf } from "./teacher-dossier.js";
+import { openDossier, STATUS_LABEL, rcOf } from "./dossier.js";
 
 const h = (tag, attrs = {}, ...kids) => {
   const el = document.createElement(tag);
@@ -39,7 +39,7 @@ export async function startTeacher({ db, profile, main, user }) {
   const students = Object.fromEntries(sSnap.docs.map((d) => [d.id, d.data()]));
   const sessions = eSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const courseOf = {}; for (const e of [...enrolls].sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""))) courseOf[e.sc] = e;   // goi moi nhat thang
-  const ctx = { db, user, students, sessions, courseOf, evaluations: evals, me, onChange: () => {} };
+  const ctx = { db, user, role: "teacher", teacherId: tid, teachers: { [tid]: me.name }, students, sessions, courseOf, evaluations: evals, me, onChange: () => {} };
   const nameOf = (sc) => students[sc]?.fullName || sc;
   const courseBadge = (sc) => courseOf[sc]?.courseId ? h("span", { class: "badge info" }, courseOf[sc].courseId) : null;
   const statusBadge = (s) => { const [l, c] = STATUS_LABEL[sessionStatus(s)] || STATUS_LABEL[""]; return h("span", { class: "badge " + c }, l); };
@@ -54,11 +54,16 @@ export async function startTeacher({ db, profile, main, user }) {
     const latest = {};   // sc -> buoi tinh gan nhat (de lay so RC that)
     for (const x of sessions) for (const sc of x.scs || []) if (isCounted(x.attendance?.[sc]) && (!latest[sc] || (x.date + (x.time || "")) > (latest[sc].date + (latest[sc].time || "")))) latest[sc] = x;
     const taught = {}; for (const x of sessions) for (const sc of x.scs || []) if (isCounted(x.attendance?.[sc])) taught[sc] = (taught[sc] || 0) + 1;
+    const rcCount = new Map();   // "sc|no" -> { n, last }
+    for (const x of sessions) for (const sc of x.scs || []) { const r = isCounted(x.attendance?.[sc]) ? rcOf(x, sc) : null; if (!r) continue; const k = sc + "|" + r.no, c = rcCount.get(k) || { sc, no: r.no, n: 0, last: x }; c.n++; if ((x.date + (x.time || "")) > (c.last.date + (c.last.time || ""))) c.last = x; rcCount.set(k, c); }
+    const due = [...rcCount.values()].filter((c) => c.n >= 10 && !evals.some((e) => e.sc === c.sc && e.rcNo === c.no)).sort((a, b) => nameOf(a.sc).localeCompare(nameOf(b.sc)) || a.no - b.no);
     const list = Object.keys(students).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
     const todays = sessions.filter((x) => x.date === today).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
     el.append(...[h("div", { class: "stats", id: "tStats" }, stat(p.present + p.absent + p.cancelled + p.unreported, `Buổi trong tháng ${ym.slice(5)}`, "var(--accent)"), stat(p.present, "Có mặt", "var(--s)"), stat(p.absent, "Vắng", "var(--a)"), stat(p.cancelled, "Hủy", "var(--d)"), stat(p.unreported, "Chưa điểm danh", "#8B5CF6")),
       todays.length ? h("div", { class: "card" }, h("h3", {}, `Hôm nay có ${todays.length} buổi`), h("div", { class: "todaylist" }, todays.map((x) => h("button", { type: "button", class: "todayitem", onclick: () => open(x.scs, x.id) },
         h("strong", {}, `${x.time || ""}${x.time ? "-" + endTime(x.time, x.minutes || 25) : ""}`), h("span", {}, x.scs.map(nameOf).join(", ")), statusBadge(x))))) : null,
+      due.length ? h("div", { class: "card", id: "dueEvals" }, h("h3", {}, `Cần đánh giá cuối RC (${due.length})`), h("p", { class: "note" }, "Các RC đã đủ 10 buổi nhưng chưa có phần EVALUATION."),
+        h("div", { class: "todaylist" }, due.map((d) => h("button", { type: "button", class: "todayitem", "data-due": `${d.sc}_${d.no}`, onclick: () => open([d.sc], d.last.id) }, h("strong", {}, nameOf(d.sc)), h("span", {}, `RC${d.no} · đủ ${d.n}/10 buổi`), h("span", { class: "badge warn" }, "Nhập đánh giá"))))) : null,
       h("div", { class: "card" }, h("h3", {}, `Học viên của tôi (${list.length})`),
         list.length ? h("div", { class: "sgrid", id: "studentCards" }, list.map((sc) => {
           const st = students[sc], r = latest[sc] ? rcOf(latest[sc], sc) : null, seq = r?.seq || 0;

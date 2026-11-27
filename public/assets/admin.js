@@ -7,6 +7,7 @@ import { openImport } from "./import-students.js";
 import { renderReports } from "./reports-import.js";
 import { renderPayroll } from "./payroll.js";
 import { renderSessions } from "./sessions-admin.js";
+import { renderDossiers } from "./dossiers-admin.js";
 import { renderDashboard } from "./dashboard-admin.js";
 import { slotsForName, DAYS, normName } from "./grid-core.js";
 
@@ -81,11 +82,12 @@ async function render() {
   const my = ++renderSeq, ent = ENTITIES[current];
   const main = $("main"); main.replaceChildren();
   leaveSchedule();
-  const NAV = [["dashboard", "Tổng quan"], "Vận hành", ["schedule", "Lịch giáo viên"], ["sessions", "Buổi học"], ["payroll", "Lương"], "Quản lý", ...Object.entries(ENTITIES).map(([k, e]) => [k, e.title]), "Hệ thống", ["reports", "Nhập báo cáo"], ["settings", "Cài đặt"]];
+  const NAV = [["dashboard", "Tổng quan"], "Vận hành", ["schedule", "Lịch giáo viên"], ["sessions", "Buổi học"], ["dossiers", "Hồ sơ học viên"], ["payroll", "Lương"], "Quản lý", ...Object.entries(ENTITIES).map(([k, e]) => [k, e.title]), "Hệ thống", ["reports", "Nhập báo cáo"], ["settings", "Cài đặt"]];
   $("nav").replaceChildren(...NAV.map((x) => typeof x === "string" ? h("div", { class: "sep" }, x) :
     h("button", { "aria-current": String(x[0] === current), "data-nav": x[0], onclick: () => { current = x[0]; render(); } }, x[1])));
   if (current === "dashboard") return renderDashboard(main, { db, h, alive: () => my === renderSeq, go: (k) => { current = k; render(); } });
   if (current === "settings") return renderSettings(main);
+  if (current === "dossiers") return renderDossiers(main, { db, h, alive: () => my === renderSeq });
   if (current === "sessions") return renderSessions(main, { db, h, alive: () => my === renderSeq });
   if (current === "payroll") return renderPayroll(main, { db, h, alive: () => my === renderSeq });
   if (current === "reports") return renderReports(main, { db, h, alive: () => my === renderSeq });

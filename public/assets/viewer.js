@@ -3,6 +3,7 @@ import { collection, getDocs, getDoc, doc, query, where } from "https://www.gsta
 import { buildReport } from "./report-core.js";
 import { mountShell } from "./shell.js";
 import { noticesView } from "./notices-view.js";
+import { mountDossier } from "./dossier.js";
 
 const h = (tag, attrs = {}, ...kids) => {
   const el = document.createElement(tag);
@@ -18,27 +19,13 @@ function reportView(sc, name, sessions, evaluations, enrollments, meetLink = "")
   const r = buildReport({ sc, sessions, evaluations }), enr = enrollments.filter((e) => e.sc === sc).sort((a, b) => (b.startDate || "").localeCompare(a.startDate || ""));
   const today = new Date(), todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const upcoming = sessions.filter((x) => (x.scs || []).includes(sc) && x.date >= todayIso && !["Present", "Absent", "Cancelled"].includes(x.attendance?.[sc])).map((x) => ({ ...x, meetLink })).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || ""))).slice(0, 14);
-  const card = (s) => h("article", { class: "session" },
-      h("header", {}, h("strong", {}, `${dmy(s.date)}${s.time ? " " + s.time : ""}`), s.rcInfo ? h("span", { class: "tag" }, `RC${s.rcInfo.no} · buổi ${s.rcInfo.seq}`) : null, h("span", { class: "note" }, s.status === "Absent" ? "Vắng" : "Có mặt")),
-      s.topic ? h("p", {}, h("strong", {}, "Progress: "), s.topic) : null, s.lesson ? h("p", { style: "white-space:pre-wrap" }, h("strong", {}, "Academic Performance: "), s.lesson) : null,
-      s.feedback ? h("p", { style: "white-space:pre-wrap" }, h("strong", {}, "Class Participation: "), s.feedback) : null);
-  const from = h("input", { type: "date", "data-f": "from", style: "width:auto" }), to = h("input", { type: "date", "data-f": "to", style: "width:auto" });
-  const stat = h("select", { "data-f": "status", style: "width:auto" }, [["", "Có mặt và vắng"], ["Present", "Chỉ có mặt"], ["Absent", "Chỉ vắng"]].map(([v, l]) => h("option", { value: v }, l)));
-  const list = h("div", { class: "sessions" }), cnt = h("span", { class: "note" });
-  const showList = () => { const items = r.items.filter((x) => (!from.value || x.date >= from.value) && (!to.value || x.date <= to.value) && (!stat.value || x.status === stat.value));
-    cnt.textContent = items.length === r.items.length ? "" : `Hiện ${items.length}/${r.items.length} buổi`; list.replaceChildren(...(items.length ? items.map(card) : [h("p", { class: "empty" }, "Không có buổi học nào.")])); };
-  for (const el of [from, to, stat]) el.onchange = showList;
-  const filterBar = h("div", { class: "bar", style: "flex-wrap:wrap;gap:8px" }, "Từ ", from, " đến ", to, stat, cnt);
-  showList();
   const head = h("section", { class: "report card", "data-sc": sc },
     h("h2", { style: "margin:0 0 4px" }, name || sc), h("p", { class: "note" }, `Mã ${sc}`),
     h("p", {}, h("strong", {}, `RC${r.rcNo}`), `: ${r.inRc}/10 buổi. Tổng ${r.counted} buổi đã học (${r.present} có mặt, ${r.absent} vắng).`),
     h("div", { class: "progress" }, h("div", { style: `width:${Math.min(100, Math.round(r.inRc * 10))}%` })),
     enr.length ? h("p", { class: "note" }, "Gói học: " + enr.map((e) => `${e.courseId || ""} ${e.startDate || ""}${e.endDate ? " - " + e.endDate : ""}${e.status ? " (" + e.status + ")" : ""}`).join("; ")) : null);
-  const evalsEl = r.evaluations.length ? [h("h3", {}, "Đánh giá"), h("div", { class: "wrap" }, h("table", {}, h("tbody", {}, r.evaluations.map((e) => h("tr", {}, h("td", {}, e.kind || `Exam ${e.rcNo}`), h("td", {}, dmy(e.date)), h("td", {}, Object.entries(e.scores || {}).map(([k, v]) => `${k}: ${v}`).join(", ")), h("td", {}, e.level || ""))))))] : null;
   const upEl = upcoming.length ? [h("h3", {}, "Lịch sắp học"), h("div", { class: "wrap", id: "upcoming" }, h("table", {}, h("tbody", {}, upcoming.map((u) => h("tr", {}, h("td", {}, dmy(u.date)), h("td", {}, `${u.time || ""}${u.minutes ? " (" + u.minutes + "p)" : ""}`), h("td", {}, u.makeupOf ? "Học bù" : ""), h("td", {}, u.meetLink ? h("a", { href: u.meetLink, target: "_blank", rel: "noopener noreferrer" }, "Vào lớp") : ""))))))] : null;
-  const repEl = h("div", { class: "card", id: "reportsCard" }, h("h3", {}, "Các buổi học"), filterBar, list);
-  return { head, evalsEl: evalsEl && h("div", { class: "card" }, evalsEl), upEl: upEl && h("div", { class: "card" }, upEl), repEl, all: () => h("div", {}, head, evalsEl && h("div", { class: "card" }, evalsEl), upEl && h("div", { class: "card" }, upEl), repEl) };
+  return { head, upEl: upEl && h("div", { class: "card" }, upEl) };
 }
 
 const safeUrl = (u) => (/^https:\/\/\S+$/.test(u || "") ? u : null);
@@ -58,9 +45,11 @@ export async function startStudent({ db, user, profile, main }) {
   const myCourses = new Set(enrollments.map((e) => e.courseId).filter(Boolean));
   const materials = (await docs(query(collection(db, "materials"), where("forStudents", "==", true))).catch(() => [])).filter((m) => !m.courseId || myCourses.has(m.courseId)).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
   const rv = reportView(sc, me.fullName || profile.displayName, sessions, evaluations, enrollments, me.meetLink || "");
+  const courseOf = {}; for (const e of [...enrollments].sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""))) courseOf[e.sc] = e;
+  const ctx = { db, user, role: "student", students: { [sc]: { ...me, id: sc } }, sessions, courseOf, evaluations, teachers: {} };
   await mountShell({ main, tabs: [
     { key: "schedule", title: "Lịch học", render: (el) => el.append(...[rv.head, rv.upEl || h("div", { class: "card" }, h("p", { class: "note" }, "Chưa có buổi học sắp tới."))].filter(Boolean)) },
-    { key: "reports", title: "Báo cáo", render: (el) => el.append(...[rv.evalsEl, rv.repEl].filter(Boolean)) },
+    { key: "reports", title: "Báo cáo", render: (el) => { const box = h("div", { class: "card", id: "reportsCard" }); el.append(box); mountDossier(ctx, [sc], box); } },
     { key: "materials", title: "Tài liệu", render: (el) => el.append(materialsView(materials) || h("div", { class: "card" }, h("p", { class: "note" }, "Chưa có tài liệu."))) },
     { key: "notices", title: "Thông báo", render: async (el) => el.append(await noticesView(db, "student", h)) }] });
 }
@@ -75,11 +64,12 @@ export async function startAgency({ db, user, profile, main }) {
     docs(query(collection(db, "evaluations"), where("agencyId", "==", agencyId), where("status", "==", "Approved"))),
     docs(query(collection(db, "enrollments"), where("agencyId", "==", agencyId)))]);
   students.sort((a, b) => (a.fullName || a.id).localeCompare(b.fullName || b.id));
+  const courseOf = {}; for (const e of [...enrollments].sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""))) courseOf[e.sc] = e;
   const box = h("div", {}), sel = h("select", { id: "agStudent" }), search = h("input", { type: "search", id: "agSearch", placeholder: "Tìm học viên theo tên hoặc mã...", style: "width:260px;margin-bottom:8px" });
   const fill = () => { const q = norm(search.value), cur = sel.value; const list = students.filter((s) => !q || norm(`${s.fullName || ""} ${s.id}`).includes(q));
     sel.replaceChildren(h("option", { value: "" }, `— Chọn học viên (${list.length}) —`), ...list.map((s) => h("option", { value: s.id, selected: s.id === cur }, `${s.fullName || s.id} (${s.id})`))); };
   search.oninput = fill; fill();
-  sel.onchange = () => { const s = students.find((x) => x.id === sel.value); box.replaceChildren(...(s ? [reportView(s.id, s.fullName, sessions, evaluations, enrollments, s.meetLink || "").all()] : [])); };
+  sel.onchange = () => { const s = students.find((x) => x.id === sel.value); box.replaceChildren(); if (s) { const card = h("div", { class: "card", id: "reportsCard", "data-sc": s.id }); box.append(card); mountDossier({ db, user, role: "agency", students: Object.fromEntries(students.map((x) => [x.id, x])), sessions, courseOf, evaluations, teachers: {} }, [s.id], card); } };
   await mountShell({ main, tabs: [
     { key: "students", title: "Học viên", render: (el) => el.append(h("div", { class: "card" }, h("h3", {}, profile.displayName || agencyId), h("p", { class: "note" }, `${students.length} học viên`), search, sel), box) },
     { key: "notices", title: "Thông báo", render: async (el) => el.append(await noticesView(db, "agency", h)) }] });

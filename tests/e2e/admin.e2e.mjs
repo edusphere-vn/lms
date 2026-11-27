@@ -253,6 +253,7 @@ await page.waitForSelector("tr[data-id=M1]"); ok((await fdb.doc("materials/M1").
 await fdb.doc("materials/M2").set({ title: "Chi giao vien", url: "https://example.com/t", forStudents: false });
 await fdb.doc("notices/N1").set({ title: "Chao tat ca", content: "x", target: "all", active: true, createdAt: 1 }); await fdb.doc("notices/N2").set({ title: "Cho giao vien", content: "x", target: "teacher", active: true, createdAt: 2 });
 await fdb.doc("notices/N3").set({ title: "Chi hoc vien", content: "x", target: "student", active: true, createdAt: 3 }); await fdb.doc("notices/N4").set({ title: "Da an", content: "x", target: "all", active: false, createdAt: 4 });
+await fdb.doc("sessions/ES112_2026-11-23").update({ rcNo: 1, rcSeq: 7 });   // sai y de buoc cap nhat RC cua admin sua lai
 // giao vien dang nhap trong trinh duyet rieng
 const tUser = await getAuth().createUser({ email: "t2@lms.edusphere.vn", password: "gv-mat-khau-1", displayName: "Miles" });
 await getAuth().setCustomUserClaims(tUser.uid, { role: "teacher", teacherId: "T2" });
@@ -285,10 +286,46 @@ await tp.selectOption("#dossier article.session[data-id=ES112_2026-11-23] select
 await tp.click("#dossier article.session[data-id=ES112_2026-11-23] button.p"); await tp.waitForSelector("#dossier article.session[data-id=ES112_2026-11-23].done");
 const rep = (await fdb.doc("sessions/ES112_2026-11-23").get()).data();
 ok(rep.attendance.ES112 === "Present" && rep.topic === "OXFORD 1" && rep.lesson === "<i>Unit 1</i>" && rep.feedback === "Tot" && rep.reportedAt > 0 && rep.teacherId === "T2", "giao vien diem danh va luu bao cao");
-ok((await tp.locator("#dossier i").count()) === 0, "khong chen HTML trong ho so lop"); await tp.click("#dossier button:has-text('Đóng')"); ok((await tp.textContent("#weekCount")).includes("đã báo cáo 1"), "dem da bao cao");
+ok((await tp.locator("#dossier i").count()) === 0, "khong chen HTML trong ho so lop");
+// EVALUATION cuoi RC: khoa cua hoc vien la IELTS_SP, 4 tieu chi toi da 9, Band = trung binh lam tron 0.5
+const IE = ["Fluency and Coherence", "Lexical Resource", "Grammatical Range and Accuracy", "Pronunciation"], sc_ = (k) => `#dossier [data-score="${k}"]`;
+await tp.click("#dossier [data-dtab=rc1]"); await tp.waitForSelector("#dossier [data-eval-form='1']"); await tp.locator("#dossier [data-eval-form='1']").scrollIntoViewIfNeeded(); await shot(tp, "teacher-evaluation");
+ok((await tp.locator("#dossier [data-score]").count()) === 4 && (await tp.textContent("#dossier [data-eval-form='1']")).includes("Fluency and Coherence (9)") && (await tp.textContent("#dossier [data-eval-form='1']")).includes("General Review"), "RC co form EVALUATION dung tieu chi IELTS (4 x 9)");
+await tp.click("#dossier [data-evsave=Submitted]"); ok((await tp.textContent("#dossier [data-eval-form='1'] .msg")).includes("Nhập đủ điểm"), "khong cho gui duyet khi thieu diem");
+for (const [k, v] of [[IE[0], "5.5"], [IE[1], "5"], [IE[2], "5"], [IE[3], "4.5"]]) await tp.fill(sc_(k), v);
+ok((await tp.textContent("#dossier .evresult")).includes("5") && (await tp.textContent("#dossier .evresult")).includes("B1") && (await tp.inputValue("#dossier [data-f=band]")) === "5", "Band Score tu tinh 5.0 va level B1: " + await tp.textContent("#dossier .evresult"));
+await tp.fill(sc_(IE[3]), "10"); await tp.click("#dossier [data-evsave=Draft]"); ok((await tp.textContent("#dossier [data-eval-form='1'] .msg")).includes("điểm từ 0 đến 9"), "diem qua 9 bi tu choi");
+await tp.fill(sc_(IE[3]), "4.5"); await tp.fill("#dossier textarea[data-comment='General Review']", "<b>Tot</b> lam"); await tp.fill(`#dossier textarea[data-comment="${IE[0]}"]`, "Noi tu nhien");
+await tp.click("#dossier [data-evsave=Draft]"); await tp.waitForSelector("#dossier [data-evstatus=Draft]");
+{ const e = (await fdb.doc("evaluations/ES112_1").get()).data(); ok(e && e.status === "Draft" && e.total === 5 && e.level === "B1" && e.teacherId === "T2" && e.kind === "Exam 1" && e.scores["Fluency and Coherence"] === 5.5 && e.scores["Band Score"] === 5 && e.comments["General Review"] === "<b>Tot</b> lam", "giao vien luu nhap danh gia: " + JSON.stringify(e)); }
+await tp.click("#dossier [data-evsave=Submitted]"); await tp.waitForSelector("#dossier [data-evstatus=Submitted]");
+ok((await fdb.doc("evaluations/ES112_1").get()).data().status === "Submitted", "giao vien gui duyet danh gia");
+await tp.setViewportSize({ width: 1280, height: 1000 }); await tp.evaluate(() => document.querySelector("#dossier .evaluation").scrollIntoView({ block: "start" })); await shot(tp, "teacher-evaluation-filled"); await tp.setViewportSize({ width: 1280, height: 720 });
+ok((await tp.locator("#dossier [data-eval-form] b").count()) === 0, "khong chen HTML trong nhan xet");
+// tab General: bang cap do + nhap diem dau vao (Entrance)
+await tp.click("#dossier [data-dtab=general]"); await tp.waitForSelector("#levelTable");
+ok((await tp.locator("#levelTable tbody tr").count()) === 6 && (await tp.textContent("#levelTable tr[data-remark='Exam 1']")).includes("5.5") && (await tp.textContent("#levelTable tr[data-remark='Exam 1']")).includes("B1") && (await tp.locator("#attendance .attcell").count()) >= 10, "General co bang Student's Level (Entrance, Exam 1-5) va luoi Attendance");
+await tp.setViewportSize({ width: 1280, height: 1500 }); await shot(tp, "teacher-general"); await tp.setViewportSize({ width: 1280, height: 720 });
+ok(await tp.locator("#levelTable [data-evedit='0']").isDisabled(), "diem dau vao da duyet (Approved) thi giao vien khong sua duoc");
+await tp.click("#levelTable [data-evedit='2']"); await tp.waitForSelector("#dossier [data-eval-form='2']");
+for (const k of IE) await tp.fill(sc_(k), "6");
+await tp.click("#dossier [data-evsave=Draft]"); await tp.waitForSelector("#levelTable tr[data-remark='Exam 2'] .badge");
+ok((await fdb.doc("evaluations/ES112_2").get()).data().kind === "Exam 2" && (await fdb.doc("evaluations/ES112_2").get()).data().total === 6, "giao vien nhap danh gia Exam 2 ngay o tab General");
+await tp.click("#dossier button:has-text('Đóng')"); ok((await tp.textContent("#weekCount")).includes("đã báo cáo 1"), "dem da bao cao");
 await tp.goto("http://localhost:5173/app.html?week=2026-09-07"); await tp.waitForSelector(".empty");
 ok(terrors.length === 0, "trang giao vien khong loi JS: " + terrors.join(" | "));
 await ctx2.close();
+
+// admin duyet danh gia giao vien gui len (trang Ho so hoc vien)
+await page.click("nav button[data-nav=dossiers]"); await page.waitForSelector("#evalQueue [data-eval]");
+ok((await page.textContent("#evalQueue")).includes("Pham Thanh Thuy B") && (await page.textContent("#evalQueue")).includes("Exam 1"), "admin thay danh gia cho duyet: " + await page.textContent("#evalQueue"));
+await page.fill("#dsSearch", "zzzz"); ok((await page.locator("tbody tr[data-sc]").count()) === 0, "loc ho so hoc vien theo ten"); await page.fill("#dsSearch", "thuy b"); await page.waitForSelector("tr[data-sc=ES112]");
+await page.click("tr[data-sc=ES112] [data-open]"); await page.waitForSelector("#dossier[open] [data-dtab=rc1]"); await page.click("#dossier [data-dtab=rc1]"); await page.waitForSelector("#dossier [data-eval-form='1']");
+ok((await page.locator("#dossier [data-evsave=Approved]").count()) === 1 && (await page.locator("#dossier article.session textarea").count()) >= 1, "admin thay nut Duyet va sua duoc buoi hoc trong ho so"); await shot(page, "admin-dossier");
+await page.click("#dossier [data-evsave=Approved]"); await page.waitForSelector("#dossier [data-evstatus=Approved]");
+ok((await fdb.doc("evaluations/ES112_1").get()).data().status === "Approved", "admin duyet va cong bo danh gia");
+await page.click("#dossier button:has-text('Đóng')"); await page.waitForFunction(() => !document.querySelector("#evalQueue [data-eval='ES112_1']"), null, { timeout: 8000 });
+ok(true, "hang cho duyet cap nhat sau khi duyet");
 
 // hoc vien dang nhap va xem bao cao cua minh
 const sUser = await getAuth().createUser({ email: "es112@lms.edusphere.vn", password: "hv-mat-khau-1", displayName: "Hoc Vien" });
@@ -299,7 +336,12 @@ await ctx3.route(/gstatic\.com\/firebasejs\/11\.0\.2\/firebase-(app|auth|firesto
 await sp.goto("http://localhost:5173/index.html"); await sp.fill("#username", "es112"); await sp.fill("#password", "hv-mat-khau-1"); await sp.click("#loginForm button");
 await sp.waitForURL("**/app.html**"); await sp.waitForSelector("section.report", { timeout: 8000 }).catch(async () => { console.log("STUDENT FAIL:", await sp.textContent("main"), serrors.join(" | ")); process.exit(2); });
 ok((await sp.textContent("section.report")).includes("ES112") && (await sp.textContent("section.report")).includes("buổi"), "hoc vien xem duoc bao cao cua minh");
-await shot(sp, "student-schedule"); await sp.click("[data-tab=reports]"); await sp.waitForSelector("#reportsCard"); await shot(sp, "student-reports"); await sp.click("[data-tab=materials]"); await sp.waitForSelector("#materials");
+await shot(sp, "student-schedule"); await sp.click("[data-tab=reports]"); await sp.waitForSelector("#reportsCard [data-dtab=general]");
+ok((await sp.locator("#reportsCard [data-evsave], #reportsCard textarea, #reportsCard [data-dtab=new]").count()) === 0, "hoc vien chi xem, khong co form nhap");
+await sp.click("#reportsCard [data-dtab=rc1]"); await sp.waitForSelector("#reportsCard [data-eval='1']");
+ok((await sp.textContent("#reportsCard [data-eval='1']")).includes("5.5") && (await sp.textContent("#reportsCard [data-eval='1']")).includes("B1") && (await sp.textContent("#reportsCard [data-eval='1']")).includes("Noi tu nhien"), "hoc vien xem danh gia da duyet (diem, level, nhan xet)");
+await sp.click("#reportsCard [data-dtab=general]"); ok((await sp.textContent("#levelTable tr[data-remark='Exam 1']")).includes("5.5") && (await sp.locator("#levelTable tr[data-remark='Exam 2'] td:nth-child(2)").textContent()) === "", "hoc vien thay bang cap do: Exam 1 (da duyet) co diem, Exam 2 (nhap) de trong");
+await sp.setViewportSize({ width: 1280, height: 1300 }); await shot(sp, "student-reports"); await sp.setViewportSize({ width: 1280, height: 720 }); await sp.click("[data-tab=materials]"); await sp.waitForSelector("#materials");
 ok((await sp.textContent("#materials")).includes("Unit 1 slides") && !(await sp.textContent("#materials")).includes("Chi giao vien"), "hoc vien chi thay tai lieu duoc phep: " + await sp.textContent("main"));
 await sp.click("[data-tab=notices]"); await sp.waitForSelector("#noticesList");
 ok((await sp.textContent("#noticesList")).includes("Chao tat ca") && (await sp.textContent("#noticesList")).includes("Chi hoc vien") && !(await sp.textContent("#noticesList")).includes("Cho giao vien"), "hoc vien thay thong bao danh cho minh");
@@ -322,7 +364,7 @@ ok((await page.textContent("main")).includes("Tổng") && (await page.locator("#
 await page.click("nav button[data-nav=schedule]"); await page.waitForSelector("#rcBtn"); await page.click("#rcBtn"); await page.waitForSelector("#rcApply");
 ok((await page.textContent("dialog")).includes("Buổi hủy chưa học bù"), "hop thoai RC va hoc bu mo duoc");
 await page.click("#rcApply"); await page.waitForFunction(() => document.querySelector("dialog .msg")?.textContent.includes("Xong"), null, { timeout: 8000 });
-ok((await fdb.doc("sessions/ES112_2026-11-23").get()).data().rcNo === 1, "cap nhat so RC ghi vao buoi hoc");
+{ const r = (await fdb.doc("sessions/ES112_2026-11-23").get()).data(); ok(r.rcNo === 1 && r.rcSeq === 3, "cap nhat so RC ghi vao buoi hoc: " + r.rcNo + "/" + r.rcSeq); }
 await page.click("dialog button.s:has-text('Đóng')");
 ok(errors.filter((e) => !/emulator|Failed to load resource/i.test(e)).length === 0, "khong co loi JS: " + errors.join(" | "));
 console.log("pass", pass);

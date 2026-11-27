@@ -4,38 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Edusphere LMS</title>
-  <style>
-    :root { --bg:#f6f7f9; --card:#fff; --ink:#1b1f24; --muted:#5b6672; --line:#e3e7ec; --accent:#1a56db; --ok:#067647; --err:#b42318; }
-    @media (prefers-color-scheme: dark) { :root { --bg:#14171a; --card:#1d2227; --ink:#eef1f4; --muted:#9aa6b2; --line:#2c333a; --accent:#6ea0ff; --ok:#4ade80; --err:#ff8a80; } }
-    * { box-sizing:border-box; }
-    body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, sans-serif; }
-    header.top { display:flex; align-items:center; gap:12px; padding:12px 16px; background:var(--card); border-bottom:1px solid var(--line); }
-    header.top h1 { font-size:17px; margin:0; flex:1; }
-    main { max-width:820px; margin:0 auto; padding:12px 16px 48px; }
-    .note { color:var(--muted); font-size:13px; } .empty { color:var(--muted); padding:24px 0; }
-    button.p { padding:7px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
-    button.s { padding:6px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); font:inherit; cursor:pointer; }
-    button:disabled { opacity:.55; cursor:default; }
-    .weekbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0 14px; }
-    section h3 { margin:18px 0 8px; font-size:15px; }
-    .session { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
-    .session.done { border-left:4px solid var(--ok); }
-    .session header { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
-    .tag { font-size:12px; padding:1px 8px; border:1px solid var(--line); border-radius:999px; color:var(--muted); }
-    .stu { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:4px 0; }
-    .stu span { font-weight:600; flex:1; min-width:140px; }
-    .stu a { color:var(--accent); }
-    select, textarea { box-sizing:border-box; max-width:100%; width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; background:transparent; color:inherit; }
-    textarea { resize:vertical; }
-    [hidden] { display:none !important }
-    .overview { margin-bottom:12px } .overview table td { padding:2px 8px; vertical-align:top }
-    .stu select { width:auto; min-width:200px; }
-    label { display:block; font-size:13px; color:var(--muted); margin:10px 0 3px; }
-    .row { display:flex; gap:10px; justify-content:flex-end; align-items:center; margin-top:12px; }
-    .msg.err { color:var(--err); }
-  </style>
   <link rel="stylesheet" href="assets/theme.css">
-  <style>.container > main { max-width:none; margin:0; padding:0; } section h3 { margin:14px 0 8px; }</style>
 </head>
 <body>
   <header class="topbar"><h1>Edusphere LMS</h1><div class="user"><span id="who"></span><button class="s" id="out">Đăng xuất</button></div></header>

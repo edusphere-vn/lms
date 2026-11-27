@@ -8,6 +8,7 @@ const STAT = { Present: ["Có mặt", "ok"], Absent: ["Vắng", "warn"], Cancell
 
 export async function renderDashboard(main, { db, h, alive = () => true, go = () => {} }) {
   const now = new Date(), today = iso(now), ym = today.slice(0, 7), first = `${ym}-01`, last = iso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const pendingEvals = await getDocs(query(collection(db, "evaluations"), where("status", "==", "Submitted"))).then((x) => x.size, () => 0);
   const [ts, ss, es, ms] = await Promise.all([getDocs(collection(db, "teachers")), getDocs(collection(db, "students")), getDocs(collection(db, "enrollments")),
     getDocs(query(collection(db, "sessions"), where("date", ">=", first), where("date", "<=", last)))]);
   if (!alive()) return;
@@ -25,6 +26,7 @@ export async function renderDashboard(main, { db, h, alive = () => true, go = ()
     h("div", { class: "card" }, h("h3", {}, "Cần xử lý"),
       h("div", { class: "rowline" }, h("span", {}, h("strong", {}, unreported), " buổi quá hạn chưa điểm danh trong tháng này"), h("button", { class: "s", onclick: () => go("sessions") }, "Xem buổi học")),
       h("div", { class: "rowline" }, h("span", {}, h("strong", {}, makeups), " buổi hủy chưa có buổi học bù trong tháng này"), h("button", { class: "s", onclick: () => go("schedule") }, "Mở RC và học bù")),
+      h("div", { class: "rowline" }, h("span", {}, h("strong", { id: "dashEvals" }, pendingEvals), " đánh giá cuối RC đang chờ duyệt"), h("button", { class: "s", onclick: () => go("dossiers") }, "Duyệt đánh giá")),
       h("div", { class: "rowline" }, h("span", {}, "Kỳ lương tháng này kết thúc ngày ", h("strong", {}, last.slice(8) + "/" + last.slice(5, 7))), h("button", { class: "s", onclick: () => go("payroll") }, "Tính lương"))),
     h("div", { class: "card" }, h("h3", {}, `Buổi học hôm nay (${todays.length})`),
       todays.length ? h("div", { class: "wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Giờ", "Giáo viên", "Học viên", "Trạng thái"].map((t) => h("th", {}, t)))),

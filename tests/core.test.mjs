@@ -278,3 +278,31 @@ test("loc buoi hoc: theo giao vien, ten hoc vien khong dau, trang thai", () => {
   assert.deepEqual(SF.filterSessions(ss, { status: "none" }, o).map((s) => s.id), ["2"]);
   assert.equal(SF.sessionStatus(ss[0]), "Present");
 });
+
+import * as EV from "../public/assets/eval-core.js";
+test("danh gia cuoi RC: ESL tong /100 va CEFR", () => {
+  const spec = EV.evalSpec("ESL_SP");
+  assert.equal(spec.totalMax, 100); assert.equal(spec.criteria.length, 5);
+  assert.deepEqual(EV.computeResult(spec, { Speaking: 15, Listening: 15, Pronunciation: 15, Vocabulary: 15, Grammar: 15 }), { total: 75, level: "B2" });
+  assert.equal(EV.computeResult(spec, { Speaking: 15 }).total, null);
+  assert.equal(EV.computeResult(spec, { Speaking: 0, Listening: 0, Pronunciation: 0, Vocabulary: 0, Grammar: 0 }).level, "A0");
+  assert.equal(EV.computeResult(spec, { Speaking: 20, Listening: 20, Pronunciation: 20, Vocabulary: 20, Grammar: 20 }).level, "C2");
+});
+test("danh gia cuoi RC: IELTS Band lam tron 0.5", () => {
+  const spec = EV.evalSpec("IELTS_SP");
+  assert.equal(spec.max, 9); assert.equal(spec.totalKey, "Band Score");
+  assert.deepEqual(EV.computeResult(spec, { "Fluency and Coherence": 5.5, "Lexical Resource": 5, "Grammatical Range and Accuracy": 5, Pronunciation: 4.5 }), { total: 5, level: "B1" });
+  assert.equal(EV.computeResult(spec, { "Fluency and Coherence": 6, "Lexical Resource": 6, "Grammatical Range and Accuracy": 6, Pronunciation: 7 }).total, 6.5);
+  assert.equal(EV.computeResult(spec, { "Fluency and Coherence": 5, "Lexical Resource": 5, "Grammatical Range and Accuracy": 5, Pronunciation: 6 }).total, 5.5);
+  assert.equal(EV.evalSpec("KHONG_CO").ielts, false);
+});
+test("danh gia cuoi RC: kiem tra diem va tao ban ghi", () => {
+  const esl = EV.evalSpec("ESL_AD"), ie = EV.evalSpec("IELTS_SP");
+  assert.equal(EV.validateScores(esl, { Speaking: 21 }).length, 1); assert.equal(EV.validateScores(esl, { Speaking: 7.5 }).length, 1); assert.equal(EV.validateScores(esl, { Speaking: 20, Grammar: "" }).length, 0);
+  assert.equal(EV.validateScores(ie, { Pronunciation: 5.25 }).length, 1); assert.equal(EV.validateScores(ie, { Pronunciation: 5.5 }).length, 0);
+  const ev = EV.makeEvaluation({ sc: "ES112", no: 2, spec: esl, date: "2026-11-20", scores: { Speaking: "15", Listening: 14, Pronunciation: 13, Vocabulary: 12, Grammar: 11 }, comments: { Speaking: " tốt ", Listening: "" }, teacherId: "T2", agencyId: "OEC", status: "Draft", now: 1 });
+  assert.equal(ev.kind, "Exam 2"); assert.equal(ev.total, 65); assert.equal(ev.level, "B1"); assert.deepEqual(ev.comments, { Speaking: "tốt" }); assert.equal(ev.scores.Speaking, 15); assert.equal(EV.evalId("ES112", 2), "ES112_2");
+  const b = EV.makeEvaluation({ sc: "X", no: 0, spec: ie, date: "", scores: { "Fluency and Coherence": 6, "Lexical Resource": 6, "Grammatical Range and Accuracy": 6, Pronunciation: 6 }, band: "6.5", status: "Submitted" });
+  assert.equal(b.kind, "Entrance"); assert.equal(b.total, 6.5); assert.equal(b.scores["Band Score"], 6.5); assert.equal(b.level, "B2");
+  assert.equal(EV.totalOf({ scores: { Speaking: 10, Listening: 10, Pronunciation: 10, Vocabulary: 10, Grammar: 10 } }, esl), 50);
+});

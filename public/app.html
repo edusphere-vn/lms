@@ -25,7 +25,8 @@
     .stu { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:4px 0; }
     .stu span { font-weight:600; flex:1; min-width:140px; }
     .stu a { color:var(--accent); }
-    select, textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; background:transparent; color:inherit; }
+    select, textarea { box-sizing:border-box; max-width:100%; width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; background:transparent; color:inherit; }
+    textarea { resize:vertical; }
     .stu select { width:auto; min-width:200px; }
     label { display:block; font-size:13px; color:var(--muted); margin:10px 0 3px; }
     .row { display:flex; gap:10px; justify-content:flex-end; align-items:center; margin-top:12px; }

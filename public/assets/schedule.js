@@ -2,11 +2,12 @@
 // Dữ liệu: schedule/{teacherId} = { teacherId, cells: { "<cột>_<HHMM>": {t, k?} }, updatedAt }. Lịch lặp hằng tuần.
 import { collection, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import * as G from "./grid-core.js";
+import { openScheduleImport } from "./schedule-import.js";
 
 let cleanup = null;   // go bo cac listener cua lan ve truoc
 export const leaveSchedule = () => { cleanup?.(); cleanup = null; };
 
-export async function renderSchedule(main, { db, h, alive = () => true }) {
+export async function renderSchedule(main, { db, h, alive = () => true, dlg, reload }) {
   cleanup?.();
   const [tSnap, sSnap, eSnap, schSnap] = await Promise.all(["teachers", "students", "enrollments", "schedule"].map((c) => getDocs(collection(db, c))));
   if (!alive()) return;
@@ -35,7 +36,7 @@ export async function renderSchedule(main, { db, h, alive = () => true }) {
     btn("Hoàn tác", () => undoStep(), "gUndo"), btn("Làm lại", () => redoStep(), "gRedo"),
     h("span", { class: "note" }, "Đặt màu vùng chọn:"),
     btn("Tự động", () => setKind(undefined), "kAuto"), btn("Không rảnh", () => setKind("na"), "kNa"), btn("Giữ chỗ", () => setKind("res"), "kRes"),
-    status);
+    status, dlg ? h("button", { class: "s", id: "skdImportBtn", type: "button", style: "margin-left:auto", onclick: () => openScheduleImport({ db, h, dlg, reload }) }, "Nhập lịch từ file Excel") : null);
   main.append(h("div", { class: "bar" }, h("h2", {}, "Lịch giáo viên (lặp hằng tuần, giờ VN)")), tabs, toolbar, wrapper, datalist,
     h("p", { class: "note" }, "Cách dùng: bấm ô rồi gõ tên để sửa (Enter xuống dòng, Tab sang phải). Giữ Shift hoặc kéo chuột để chọn vùng. Ctrl+C/Ctrl+V sao chép được cả từ Google Sheets. Kéo chấm vuông ở góc vùng chọn để điền lặp. Delete để xóa, Ctrl+Z để hoàn tác. Nhiều học viên trong một ô (lớp nhóm): cách nhau bằng dấu phẩy. Ô viền đỏ = học viên bị xếp trùng giờ ở giáo viên khác."));
 

@@ -103,3 +103,25 @@ export function findConflicts(all) {
   }
   return out;
 }
+
+// Lich tuan cua mot hoc vien (theo ten, khong dau) tu tat ca luoi: gop cac o 30 phut lien tiep thanh khoang gio.
+// Tra ve [{teacherId, day, from:"20:00", to:"21:00"}] sap xep theo thu roi gio.
+export function slotsForName(all, name) {
+  const want = normName(name), out = [];
+  if (!want) return out;
+  for (const [tid, cells] of Object.entries(all)) {
+    const hit = new Set();
+    for (const [k, cell] of Object.entries(cells || {})) if (!cell.k && splitNames(cell.t).some((n) => normName(n) === want)) hit.add(k);
+    const byDay = {};
+    for (const k of hit) { const { r, c } = parseKey(k); (byDay[c] ||= []).push(r); }
+    for (const [c, rs] of Object.entries(byDay)) {
+      rs.sort((a, b) => a - b);
+      let start = rs[0], prev = rs[0];
+      for (const r of [...rs.slice(1), Infinity]) {
+        if (r !== prev + 1) { out.push({ teacherId: tid, day: Number(c), from: rowTime(start), to: hhmm(START_MIN + (prev + 1) * STEP) }); start = r; }
+        prev = r;
+      }
+    }
+  }
+  return out.sort((a, b) => a.day - b.day || a.from.localeCompare(b.from));
+}

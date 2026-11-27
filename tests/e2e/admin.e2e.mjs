@@ -51,10 +51,11 @@ await add("Giáo viên", [[0, "T1"], [1, "Alden"], [3, "100"], [4, "200"]]);
 await page.click("nav button:text-is('Học viên')"); await page.waitForFunction(() => document.querySelector(".bar h2")?.textContent.startsWith("Học viên")); await page.click("#add");
 ok((await page.locator("dialog select option").allTextContents()).some((t) => t.includes("OEC Education")), "dropdown agency co du lieu");
 await page.locator("dialog input").nth(0).fill("ES112"); await page.locator("dialog input").nth(1).fill("Pham Thanh Thuy");
-await page.locator("dialog select").first().selectOption("OEC"); await page.locator("dialog input[type=checkbox]").check();
-await page.locator("dialog input:not([type=checkbox])").nth(3).fill("T1");   // o teacherIds
+await page.locator("dialog select").first().selectOption("OEC"); await page.locator("dialog input[type=checkbox]").first().check();
+ok((await page.locator(".checklist label").first().textContent()).includes("Alden"), "danh sach giao vien hien ten"); await page.locator(".checklist input[value=T1]").check();
 await page.click("dialog button[type=submit]"); await page.waitForSelector("dialog[open]", { state: "hidden" });
 await page.waitForSelector("tr[data-id=ES112]");
+ok((await page.textContent("tr[data-id=ES112]")).includes("Alden"), "bang hoc vien hien ten giao vien, khong chi ma");
 const t = await getFirestore().doc("teachers/T1").get(), s = await getFirestore().doc("students/ES112").get();
 ok(t.data().name === "Alden" && t.data().rate50 === 200, "teachers/T1 dung");
 ok(s.data().fullName === "Pham Thanh Thuy" && s.data().agencyId === "OEC" && s.data().isNew === true && JSON.stringify(s.data().teacherIds) === '["T1"]', "students/ES112 dung: " + JSON.stringify(s.data()));
@@ -115,6 +116,12 @@ if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT + "/grid.pn
 await cell(30, 6).click(); await page.keyboard.type("<img src=x onerror=window.__xss=1>"); await page.keyboard.press("Enter");
 ok(!(await page.evaluate(() => window.__xss)) && (await page.locator("table.grid img").count()) === 0, "o lich khong chen HTML");
 
+// 5b. Hoc vien: goi hoc + lich tuan doc tu luoi
+await page.click("nav button[data-nav=students]"); await page.waitForSelector("tr[data-id=ES112]");
+await page.click("tr[data-id=ES112] button:has-text('Sửa')"); await page.waitForSelector("#stuInfo li");
+ok((await page.textContent("#stuInfo")).includes("Thứ Ba 07:00-09:00 · Alden") && (await page.textContent("#stuInfo")).includes("IELTS_SP"), "dialog hoc vien hien lich tuan + goi hoc: " + await page.textContent("#stuInfo"));
+await page.click("dialog button:has-text('Hủy')");
+
 // 6. Nhap danh sach hoc vien tu xlsx (du lieu gia lap)
 const H = ["SC", "Agency", "Name", "Course", "Period", "Class", "Skd", "Length", "VTime", "Start", "Mo", "End", "Year", "Invoice", "Paid", "Status", "Type", "Teacher"];
 const ser = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8)) / 86400000 + 25569;
@@ -155,6 +162,48 @@ await page.click("dialog button:has-text('Đóng')");
 await page.click("#importBtn"); await page.setInputFiles("#impFile", xlsxPath); await page.waitForSelector("#impGo"); await page.click("#impGo");
 await page.waitForFunction(() => /Xong\./.test(document.querySelector("dialog .msg")?.textContent || ""));
 ok((await sdb.collection("enrollments").get()).size === before && (await sdb.collection("teachers").get()).size === tnames.length, "nhap lai khong tao ban trung");
+await page.click("dialog button:has-text('Đóng')");
+
+
+// 7. Xoa: agency/giao vien/hoc vien, chuyen du lieu sang muc khac, xoa tai khoan
+await fdb.doc("agencies/OEC2").set({ name: "OEC trung" }); await fdb.doc("agencies/KEEP").set({ name: "Agency giu lai" });
+await fdb.doc("teachers/TX").set({ name: "Test X" }); await fdb.doc("users/xuid").set({ role: "teacher", teacherId: "TX", username: "tx", displayName: "Test X" });
+await fdb.doc("schedule/TX").set({ teacherId: "TX", cells: { "0_0600": { t: "Ai Do" } } });
+const delRow = async (nav, id) => { await page.click(`nav button[data-nav=${nav}]`); await page.waitForSelector(`[data-del="${id}"]`); await page.click(`[data-del="${id}"]`); await page.waitForSelector("#delGo"); };
+await delRow("agencies", "OEC2"); ok(!(await page.locator("#delTarget").count()), "agency khong dung thi khong can chuyen");
+await page.click("#delGo"); ok((await page.textContent("dialog .msg")).includes("xác nhận"), "bat buoc tich xac nhan"); await page.check("#delOk"); await page.click("#delGo");
+await page.waitForSelector("dialog[open]", { state: "hidden" }); ok(!(await fdb.doc("agencies/OEC2").get()).exists, "xoa agency khong dung");
+await delRow("agencies", "OEC"); ok((await page.textContent("#delGo")) === "Xóa" && (await page.textContent("dialog")).includes("1 học viên"), "agency dang dung bao so luong");
+await page.check("#delOk"); await page.click("#delGo"); ok((await page.textContent("dialog .msg")).includes("chọn"), "bat buoc chon muc chuyen sang");
+await page.selectOption("#delTarget", "KEEP"); await page.click("#delGo"); await page.waitForSelector("dialog[open]", { state: "hidden" });
+ok(!(await fdb.doc("agencies/OEC").get()).exists && (await fdb.doc("students/ES112").get()).data().agencyId === "KEEP", "xoa agency + chuyen hoc vien sang KEEP");
+apiBody = null;
+await delRow("teachers", "TX"); ok((await page.textContent("dialog")).includes("1 ô trên lưới lịch"), "giao vien chi co lich thi khong bat buoc chuyen");
+await page.check("#delOk"); await page.click("#delGo"); await page.waitForSelector("dialog[open]", { state: "hidden" });
+ok(!(await fdb.doc("teachers/TX").get()).exists && !(await fdb.doc("schedule/TX").get()).exists, "xoa giao vien + lich cua giao vien");
+ok(apiBody?.url.endsWith("/api/users/delete") && apiBody.body.uid === "xuid", "goi Worker xoa tai khoan: " + JSON.stringify(apiBody));
+await delRow("students", "ES9002"); ok((await page.textContent("dialog")).includes("1 gói học"), "hoc vien bao so goi bi xoa theo");
+await page.check("#delOk"); await page.click("#delGo"); await page.waitForSelector("dialog[open]", { state: "hidden" });
+ok(!(await fdb.doc("students/ES9002").get()).exists && !(await fdb.doc("enrollments/ES9002_2026-07-01").get()).exists && !(await fdb.doc("billing/ES9002_2026-07-01").get()).exists, "xoa hoc vien + goi + thu tien");
+await delRow("teachers", "T1"); ok((await page.textContent("#delGo")) === "Xóa" && (await page.textContent("dialog")).includes("gói học"), "giao vien dang day phai chuyen");
+await page.check("#delOk"); await page.selectOption("#delTarget", "T2"); await page.click("#delGo"); await page.waitForSelector("dialog[open]", { state: "hidden" });
+const st112 = (await fdb.doc("students/ES112").get()).data(), mv = (await fdb.doc("schedule/T2").get()).data();
+ok(JSON.stringify(st112.teacherIds) === '["T2"]' && (await fdb.doc("enrollments/e1").get()).data().teacherId === "T2" && mv.cells["1_0730"].t === "Pham Thanh Thuy B" && mv.cells["1_0700"].t === "pham thanh thuy b" && !(await fdb.doc("schedule/T1").get()).exists, "xoa giao vien chuyen goi, hoc vien, lich sang GV khac");
+
+// 8. Nhap lich tu file Excel
+const T = (h, m = 0) => (h * 60 + m) / 1440;
+const skd = [["", "Miles"], ["VN Time", "PH Time", "Monday", "Tuesday"], [T(8), T(9), "Ho Linh San", ""], [T(8, 30), T(9, 30), "Ho Linh San", "Quoc Tri"],
+  ["", "Sir NEWBIE "], ["VN Time", "Phil time", "Monday"], [T(20), T(21), "Thanh Danh"]];
+const wbs = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wbs, XLSX.utils.aoa_to_sheet(skd), "ClassSKD");
+const skdPath = path.join(os.tmpdir(), "classskd-test.xlsx"); XLSX.writeFile(wbs, skdPath);
+await page.click("nav button[data-nav=schedule]"); await page.waitForSelector("#skdImportBtn", { timeout: 8000 }).catch(async () => { console.log("SKD FAIL errors:", errors.join(" | "), "| main:", (await page.innerHTML("main")).slice(0, 400)); process.exit(2); }); await page.click("#skdImportBtn");
+await page.setInputFiles("#skdFile", skdPath); await page.waitForSelector("#skdGo");
+ok((await page.locator("tr[data-block=miles] select").inputValue()) === "T2" && (await page.locator("tr[data-block=newbie] select").inputValue()) === "__new__", "khop giao vien Miles->T2, Newbie tao moi");
+await page.click("#skdGo"); await page.waitForFunction(() => /Xong\./.test(document.querySelector("dialog .msg")?.textContent || ""));
+const m2 = (await fdb.doc("schedule/T2").get()).data().cells;
+ok(JSON.stringify(Object.keys(m2).sort()) === '["0_0800","0_0830","1_0830"]' && m2["0_0800"].t === "Ho Linh San", "ghi de lich T2 theo file: " + Object.keys(m2));
+const nb = (await fdb.collection("teachers").where("name", "==", "Newbie").get()).docs[0];
+ok(nb && (await fdb.doc(`schedule/${nb.id}`).get()).data().cells["0_2000"].t === "Thanh Danh", "tao giao vien moi va lich");
 await page.click("dialog button:has-text('Đóng')");
 
 ok(errors.filter((e) => !/emulator|Failed to load resource/i.test(e)).length === 0, "khong co loi JS: " + errors.join(" | "));

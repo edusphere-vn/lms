@@ -1,9 +1,10 @@
 import { auth, db, API_BASE } from "./firebase.js";
 import { CONFIG, COURSES, RUBRICS } from "./defaults.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-import { collection, getDocs, doc, getDoc, setDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { collection, getDocs, doc, getDoc, setDoc, writeBatch, query, where, arrayRemove, arrayUnion } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { renderSchedule, leaveSchedule } from "./schedule.js";
 import { openImport } from "./import-students.js";
+import { slotsForName, DAYS } from "./grid-core.js";
 
 // ---------- helper DOM (luon dung textContent, khong chen HTML tu du lieu) ----------
 const h = (tag, attrs = {}, ...kids) => {
@@ -33,7 +34,7 @@ const ENTITIES = {
     { k: "sc", label: "Mã SC", req: true }, { k: "fullName", label: "Họ tên", req: true },
     { k: "agencyId", label: "Agency", type: "select", options: () => [["", "—"], ...(cache.agencies || []).map((a) => [a.agencyId, a.name || a.agencyId])] },
     { k: "meetLink", label: "Link Meet" }, { k: "isNew", label: "Học viên mới / học thử", type: "bool" },
-    { k: "teacherIds", label: "Giáo viên đang dạy (mã, cách nhau dấu phẩy)", type: "tags", hide: true },
+    { k: "teacherIds", label: "Giáo viên", type: "teachers" },
     { k: "status", label: "Trạng thái", type: "select", options: STATUS } ] },
   agencies: { title: "Agency", coll: "agencies", id: "agencyId", role: "agency", account: true, fields: [
     { k: "agencyId", label: "Mã agency", req: true }, { k: "name", label: "Tên", req: true }, { k: "contact", label: "Liên hệ" } ] },
@@ -43,6 +44,7 @@ const ENTITIES = {
     { k: "status", label: "Trạng thái", type: "select", options: STATUS } ] },
 };
 const cache = {};     // cache[collection] = [docs]
+const teacherName = (id) => (cache.teachers || []).find((t) => t.teacherId === id)?.name || id;
 let accounts = [];     // users/*
 let current = "teachers";
 
@@ -59,6 +61,7 @@ const display = (f, v) => {
   if (v == null || v === "") return "";
   if (f.type === "bool") return v ? "Có" : "Không";
   if (f.type === "tags") return Array.isArray(v) ? v.join(", ") : v;
+  if (f.type === "teachers") return (Array.isArray(v) ? v : []).map(teacherName).join(", ");
   if (f.type === "select") { const o = (typeof f.options === "function" ? f.options() : f.options).find(([val]) => val === v); return o ? o[1] : v; }
   return v;
 };
@@ -70,8 +73,8 @@ async function render() {
   $("nav").replaceChildren(...[...Object.entries(ENTITIES), ["schedule", { title: "Lịch giáo viên" }], ["settings", { title: "Cài đặt" }]].map(([key, e]) =>
     h("button", { "aria-current": String(key === current), "data-nav": key, onclick: () => { current = key; render(); } }, e.title)));
   if (current === "settings") return renderSettings(main);
-  if (current === "schedule") return renderSchedule(main, { db, h, alive: () => my === renderSeq });
-  await Promise.all([load(ent.coll), ent.coll === "students" ? load("agencies") : null, ent.account ? loadAccounts() : null]);
+  if (current === "schedule") return renderSchedule(main, { db, h, dlg, reload: render, alive: () => my === renderSeq });
+  await Promise.all([load(ent.coll), ent.coll === "students" ? Promise.all([load("agencies"), load("teachers")]) : null, ent.account ? loadAccounts() : null]);
   if (my !== renderSeq) return;
   const cols = ent.fields.filter((f) => !f.hide);
   const rows = cache[ent.coll];
@@ -86,7 +89,8 @@ async function render() {
         return h("tr", { "data-id": r[ent.id] }, cols.map((f) => h("td", {}, display(f, r[f.k]))),
           h("td", {}, ent.account ? (acc ? `${acc.username}` : "Chưa có") : ""),
           h("td", { class: "act" }, h("button", { class: "s", onclick: () => openForm(ent, r) }, "Sửa"),
-            ent.account ? h("button", { class: "s", onclick: () => openAccount(ent, r, acc) }, acc ? "Đặt lại mật khẩu" : "Tạo tài khoản") : null));
+            ent.account ? h("button", { class: "s", onclick: () => openAccount(ent, r, acc) }, acc ? "Đặt lại mật khẩu" : "Tạo tài khoản") : null,
+            h("button", { class: "s danger", "data-del": r[ent.id], onclick: () => openDelete(ent, r, acc) }, "Xóa")));
       })))));
 }
 
@@ -101,6 +105,11 @@ function openForm(ent, row) {
       if (f.type === "select") { input = h("select", {}, (typeof f.options === "function" ? f.options() : f.options).map(([v, l]) => h("option", { value: v, selected: v === (val ?? "") }, l))); }
       else if (f.type === "bool") { input = h("input", { type: "checkbox", checked: !!val }); }
       else if (f.type === "tags") { input = h("input", { value: Array.isArray(val) ? val.join(", ") : "" }); }
+      else if (f.type === "teachers") {
+        const sel = new Set(Array.isArray(val) ? val : []);
+        input = h("div", { class: "checklist", "data-field": f.k }, (cache.teachers || []).map((t) => h("label", { class: "inline" }, h("input", { type: "checkbox", value: t.teacherId, checked: sel.has(t.teacherId) }), ` ${t.name} (${t.teacherId})`)),
+          [...sel].filter((id) => !(cache.teachers || []).some((t) => t.teacherId === id)).map((id) => h("label", { class: "inline" }, h("input", { type: "checkbox", value: id, checked: true }), ` ${id} (không còn trong danh sách)`)));
+      }
       else { input = h("input", { type: f.type === "number" ? "number" : "text", step: f.type === "number" ? "any" : null, value: val ?? "", required: !!f.req, disabled: editing && f.k === ent.id }); }
       inputs[f.k] = input;
       return [h("label", {}, f.label), input];
@@ -114,6 +123,7 @@ function openForm(ent, row) {
       const el = inputs[f.k];
       if (f.type === "bool") data[f.k] = el.checked;
       else if (f.type === "tags") data[f.k] = el.value.split(",").map((s) => s.trim()).filter(Boolean);
+      else if (f.type === "teachers") data[f.k] = [...el.querySelectorAll("input:checked")].map((i) => i.value);
       else if (f.type === "number") { if (el.value !== "") data[f.k] = Number(el.value); }
       else if (el.value !== "" || editing) data[f.k] = el.value.trim();
     }
@@ -124,6 +134,90 @@ function openForm(ent, row) {
     catch (err) { msg.textContent = "Không lưu được: " + (err.code || err.message); }
   });
   dlg.replaceChildren(form); dlg.showModal();
+  if (editing && ent.coll === "students") appendStudentInfo(form, row);
+}
+
+// Goi hoc va lich tuan (chi doc) cua hoc vien, lay tu enrollments va luoi lich (khop theo ten).
+async function appendStudentInfo(form, row) {
+  const box = h("div", { class: "info", id: "stuInfo" }, h("p", { class: "note" }, "Đang tải gói học và lịch tuần..."));
+  form.insertBefore(box, form.querySelector(".msg"));
+  try {
+    const [en, sch] = await Promise.all([getDocs(query(collection(db, "enrollments"), where("sc", "==", row.sc))), getDocs(collection(db, "schedule"))]);
+    const all = Object.fromEntries(sch.docs.map((d) => [d.id, d.data().cells || {}]));
+    const pk = en.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => String(b.startDate).localeCompare(String(a.startDate)));
+    const slots = slotsForName(all, row.fullName);
+    box.replaceChildren(
+      h("h4", {}, `Gói học (${pk.length})`),
+      pk.length ? h("table", { class: "mini" }, pk.map((e) => h("tr", {}, h("td", {}, e.courseId || "?"), h("td", {}, e.kind || ""), h("td", {}, teacherName(e.teacherId) || e.teacherName || ""), h("td", {}, `${e.startDate || "?"} → ${e.endDate || "?"}`), h("td", {}, e.sessions ? `${e.sessions} buổi` : ""), h("td", {}, e.status || ""), h("td", { class: "note" }, (e.flags || []).length ? "cần kiểm" : "")))) : h("p", { class: "note" }, "Chưa có gói học."),
+      h("h4", {}, "Lịch tuần trên lưới (chỉ xem, sửa ở tab Lịch giáo viên)"),
+      slots.length ? h("ul", {}, slots.map((x) => h("li", {}, `${DAYS[x.day]} ${x.from}-${x.to} · ${teacherName(x.teacherId)}`))) : h("p", { class: "note" }, "Chưa thấy tên học viên này trên lưới lịch (khớp theo họ tên)."));
+  } catch (e) { box.replaceChildren(h("p", { class: "msg err" }, "Không tải được: " + (e.code || e.message))); }
+}
+
+// ---------- xoa (kem chuyen sang muc khac neu dang duoc dung) ----------
+const refOf = { agencies: { students: "agencyId", enrollments: "agencyId", billing: "agencyId" }, courses: { enrollments: "courseId" }, teachers: { enrollments: "teacherId" } };
+const countWhere = async (coll, field, op, val) => (await getDocs(query(collection(db, coll), where(field, op, val)))).size;
+async function openDelete(ent, row, acc) {
+  const id = row[ent.id], label = row.name || row.fullName || id, msg = h("div", { class: "msg", role: "status" });
+  const body = h("div", {}, h("p", { class: "note" }, "Đang kiểm tra dữ liệu liên quan..."));
+  dlg.replaceChildren(h("h3", {}, `Xóa ${ent.title.toLowerCase()}: ${label}`), body, msg); dlg.showModal();
+  try {
+    const uses = [];   // [mo ta, so luong]
+    if (ent.coll === "agencies") { uses.push(["học viên", await countWhere("students", "agencyId", "==", id)], ["gói học", await countWhere("enrollments", "agencyId", "==", id)]); }
+    if (ent.coll === "courses") uses.push(["gói học", await countWhere("enrollments", "courseId", "==", id)]);
+    if (ent.coll === "teachers") {
+      uses.push(["gói học", await countWhere("enrollments", "teacherId", "==", id)], ["học viên đang gắn giáo viên này", await countWhere("students", "teacherIds", "array-contains", id)]);
+      const sd = await getDoc(doc(db, "schedule", id)); uses.push(["ô trên lưới lịch", Object.keys(sd.data()?.cells || {}).length]);
+    }
+    let pkgs = 0;
+    if (ent.coll === "students") { pkgs = await countWhere("enrollments", "sc", "==", id); uses.push(["gói học (sẽ bị xóa theo)", pkgs], ["bản ghi thu tiền (sẽ bị xóa theo)", await countWhere("billing", "sc", "==", id)]); }
+    const used = uses.filter(([, n]) => n > 0), hard = used.filter(([t]) => !t.startsWith("ô trên lưới"));
+    const needsTarget = ent.coll !== "students" && hard.length > 0, offerTarget = ent.coll !== "students" && used.length > 0;   // lich luoi: chuyen sang GV khac la tuy chon
+    const others = (cache[ent.coll] || []).filter((r) => r[ent.id] !== id);
+    const target = h("select", { id: "delTarget" }, h("option", { value: "" }, "— chọn —"), others.map((r) => h("option", { value: r[ent.id] }, `${r.name || r.fullName} (${r[ent.id]})`)));
+    const ok = h("input", { type: "checkbox", id: "delOk" });
+    const go = h("button", { type: "button", class: "p danger", id: "delGo" }, "Xóa");
+    body.replaceChildren(...[
+      used.length ? h("p", {}, "Đang được dùng bởi: ", used.map(([t, n]) => `${n} ${t}`).join(", "), ".") : h("p", {}, "Không có dữ liệu nào đang dùng mục này."),
+      offerTarget ? [h("label", {}, `Chuyển các dữ liệu trên sang ${ent.title.toLowerCase()} khác trước khi xóa ${needsTarget ? "(bắt buộc)" : "(không bắt buộc; để trống thì lịch trên lưới bị xóa theo)"}`), target] : null,
+      acc ? h("p", { class: "note" }, `Tài khoản đăng nhập "${acc.username}" cũng sẽ bị xóa.`) : null,
+      h("label", { class: "inline" }, ok, " Tôi hiểu việc xóa không thể hoàn tác."),
+      h("div", { class: "row" }, h("button", { type: "button", class: "s", onclick: () => dlg.close() }, "Hủy"), go)].flat().filter(Boolean));
+    go.onclick = async () => {
+      if (!ok.checked) { msg.className = "msg err"; msg.textContent = "Hãy tích ô xác nhận."; return; }
+      if (needsTarget && !target.value) { msg.className = "msg err"; msg.textContent = "Hãy chọn mục để chuyển dữ liệu sang."; return; }
+      go.disabled = true; msg.className = "msg"; msg.textContent = "Đang xóa...";
+      try {
+        const note = await doDelete(ent, id, target.value, acc); await render();
+        if (note) { msg.className = "msg err"; msg.textContent = note; go.remove(); } else dlg.close();
+      }
+      catch (e) { msg.className = "msg err"; msg.textContent = "Không xóa được: " + (e.code || e.message); go.disabled = false; }
+    };
+  } catch (e) { body.replaceChildren(h("p", { class: "msg err" }, "Không kiểm tra được: " + (e.code || e.message))); }
+}
+async function commitOps(ops) {   // ops: [(batch) => void]
+  for (let i = 0; i < ops.length; i += 400) { const b = writeBatch(db); ops.slice(i, i + 400).forEach((f) => f(b)); await b.commit(); }
+}
+async function doDelete(ent, id, to, acc) {
+  const ops = [], docsOf = async (coll, field, op, val) => (await getDocs(query(collection(db, coll), where(field, op, val)))).docs;
+  if (ent.coll === "agencies" || ent.coll === "courses" || ent.coll === "teachers") {
+    for (const [coll, field] of Object.entries(refOf[ent.coll])) for (const d of await docsOf(coll, field, "==", id)) ops.push((b) => b.update(d.ref, { [field]: to }));
+    if (ent.coll === "teachers" && to) {
+      for (const d of await docsOf("students", "teacherIds", "array-contains", id)) ops.push((b) => { b.update(d.ref, { teacherIds: arrayRemove(id) }); b.update(d.ref, { teacherIds: arrayUnion(to) }); });
+      const [src, dst] = await Promise.all([getDoc(doc(db, "schedule", id)), getDoc(doc(db, "schedule", to))]);
+      if (src.exists() && Object.keys(src.data().cells || {}).length) ops.push((b) => b.set(doc(db, "schedule", to), { teacherId: to, cells: { ...src.data().cells, ...(dst.data()?.cells || {}) }, updatedAt: Date.now() }));   // lich cua giao vien dich duoc uu tien khi trung o
+      if (src.exists()) ops.push((b) => b.delete(doc(db, "schedule", id)));
+    }
+  }
+  if (ent.coll === "teachers" && !to) {   // khong chuyen: xoa lich theo
+    for (const d of await docsOf("students", "teacherIds", "array-contains", id)) ops.push((b) => b.update(d.ref, { teacherIds: arrayRemove(id) }));
+    const sd = await getDoc(doc(db, "schedule", id)); if (sd.exists()) ops.push((b) => b.delete(sd.ref)); }
+  if (ent.coll === "students") for (const coll of ["enrollments", "billing"]) for (const d of await docsOf(coll, "sc", "==", id)) ops.push((b) => b.delete(d.ref));
+  ops.push((b) => b.delete(doc(db, ent.coll, id)));
+  let note = "";
+  if (acc) { try { await callApi("/api/users/delete", { uid: acc.uid }); } catch (e) { note = `Dữ liệu đã xóa, nhưng tài khoản đăng nhập "${acc.username}" chưa xóa được (${e.message}). Nếu báo "Không tìm thấy", Worker cần được cập nhật bản mới.`; } }
+  await commitOps(ops);
+  return note;
 }
 
 // ---------- tao tai khoan / dat lai mat khau (qua Worker) ----------

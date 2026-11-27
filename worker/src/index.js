@@ -1,6 +1,7 @@
 // Cloudflare Worker: cac viec dac quyen cua Edusphere LMS.
 //   POST /api/users/create  { username, password, role, displayName?, teacherId?, sc?, agencyId? }
 //   POST /api/users/reset   { uid, password }
+//   POST /api/users/delete  { uid }   (xoa tai khoan dang nhap va users/{uid}; khong cho admin tu xoa minh)
 // Chi admin (ID token Firebase co claim role=admin) duoc goi.
 // Bien moi truong: PROJECT_ID, ALLOWED_ORIGINS, secret FIREBASE_SERVICE_ACCOUNT (JSON).
 
@@ -19,23 +20,23 @@ let jwksCache = { at: 0, keys: null };
 async function getJwks() {
   if (jwksCache.keys && Date.now() - jwksCache.at < 3600_000) return jwksCache.keys;
   const res = await fetch(JWKS_URL);
-  if (!res.ok) throw new HttpError(502, "Khong lay duoc khoa xac thuc");
+  if (!res.ok) throw new HttpError(502, "Không lấy được khóa xác thực");
   jwksCache = { at: Date.now(), keys: (await res.json()).keys };
   return jwksCache.keys;
 }
 
 export async function verifyIdToken(token, projectId) {
   const parts = (token || "").split(".");
-  if (parts.length !== 3) throw new HttpError(401, "Token khong hop le");
+  if (parts.length !== 3) throw new HttpError(401, "Token không hợp lệ");
   const header = b64uToJson(parts[0]), claims = b64uToJson(parts[1]);
-  if (header.alg !== "RS256") throw new HttpError(401, "Token khong hop le");
+  if (header.alg !== "RS256") throw new HttpError(401, "Token không hợp lệ");
   const jwk = (await getJwks()).find((k) => k.kid === header.kid);
-  if (!jwk) throw new HttpError(401, "Token khong hop le");
+  if (!jwk) throw new HttpError(401, "Token không hợp lệ");
   const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
   const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64uToBytes(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
   const now = Math.floor(Date.now() / 1000);
   if (!ok || claims.aud !== projectId || claims.iss !== `https://securetoken.google.com/${projectId}`
-      || !claims.sub || claims.exp < now || claims.iat > now + 300) throw new HttpError(401, "Token khong hop le hoac het han");
+      || !claims.sub || claims.exp < now || claims.iat > now + 300) throw new HttpError(401, "Token không hợp lệ hoặc hết hạn");
   return claims;
 }
 
@@ -58,7 +59,7 @@ async function getAccessToken(env) {
     method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${head}.${body}.${bytesToB64u(sig)}` }),
   });
-  if (!res.ok) throw new HttpError(502, "Khong lay duoc quyen service account");
+  if (!res.ok) throw new HttpError(502, "Không lấy được quyền service account");
   accessCache = { at: Date.now(), token: (await res.json()).access_token };
   return accessCache.token;
 }
@@ -69,7 +70,7 @@ async function google(env, url, method, payload) {
     body: JSON.stringify(payload),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new HttpError(res.status === 400 ? 400 : 502, data?.error?.message || "Loi Google API");
+  if (!res.ok) throw new HttpError(res.status === 400 ? 400 : 502, data?.error?.message || "Lỗi Google API");
   return data;
 }
 
@@ -87,13 +88,13 @@ const USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
 
 async function createUser(env, b) {
   const username = String(b.username || "").trim().toLowerCase();
-  if (!USERNAME_RE.test(username)) throw new HttpError(400, "Ten dang nhap 3-32 ky tu: chu thuong, so, . _ -");
-  if (!ROLES.includes(b.role)) throw new HttpError(400, "Vai tro khong hop le");
-  if (String(b.password || "").length < 8) throw new HttpError(400, "Mat khau tam can it nhat 8 ky tu");
+  if (!USERNAME_RE.test(username)) throw new HttpError(400, "Tên đăng nhập 3-32 ký tự: chữ thường không dấu, số, . _ -");
+  if (!ROLES.includes(b.role)) throw new HttpError(400, "Vai trò không hợp lệ");
+  if (String(b.password || "").length < 8) throw new HttpError(400, "Mật khẩu tạm cần ít nhất 8 ký tự");
   const claims = { role: b.role };
-  if (b.role === "teacher") { if (!b.teacherId) throw new HttpError(400, "Thieu teacherId"); claims.teacherId = String(b.teacherId); }
-  if (b.role === "student") { if (!b.sc) throw new HttpError(400, "Thieu ma hoc vien (sc)"); claims.sc = String(b.sc); }
-  if (b.role === "agency")  { if (!b.agencyId) throw new HttpError(400, "Thieu agencyId"); claims.agencyId = String(b.agencyId); }
+  if (b.role === "teacher") { if (!b.teacherId) throw new HttpError(400, "Thiếu teacherId"); claims.teacherId = String(b.teacherId); }
+  if (b.role === "student") { if (!b.sc) throw new HttpError(400, "Thiếu mã học viên (sc)"); claims.sc = String(b.sc); }
+  if (b.role === "agency")  { if (!b.agencyId) throw new HttpError(400, "Thiếu agencyId"); claims.agencyId = String(b.agencyId); }
   const created = await google(env, `${IDP(env)}/accounts`, "POST", {
     email: `${username}@${AUTH_DOMAIN}`, password: b.password, displayName: b.displayName || username,
     emailVerified: true, customAttributes: JSON.stringify(claims),
@@ -103,14 +104,24 @@ async function createUser(env, b) {
 }
 
 async function resetPassword(env, b) {
-  if (!b.uid) throw new HttpError(400, "Thieu uid");
-  if (String(b.password || "").length < 8) throw new HttpError(400, "Mat khau tam can it nhat 8 ky tu");
+  if (!b.uid) throw new HttpError(400, "Thiếu uid");
+  if (String(b.password || "").length < 8) throw new HttpError(400, "Mật khẩu tạm cần ít nhất 8 ký tự");
   await google(env, `${IDP(env)}/accounts:update`, "POST", { localId: b.uid, password: b.password });
   await writeUserDoc(env, b.uid, { mustChangePassword: true });
   return { uid: b.uid };
 }
 
-const ROUTES = { "/api/users/create": createUser, "/api/users/reset": resetPassword };
+async function deleteUser(env, b, claims) {
+  const uid = String(b.uid || "");
+  if (!/^[A-Za-z0-9]{6,128}$/.test(uid)) throw new HttpError(400, "uid không hợp lệ");
+  if (uid === claims.sub) throw new HttpError(400, "Không thể tự xóa tài khoản của chính mình");
+  try { await google(env, `${IDP(env)}/accounts:delete`, "POST", { localId: uid }); }
+  catch (e) { if (!/USER_NOT_FOUND/.test(e.message)) throw e; }   // da xoa roi thi coi nhu xong
+  await google(env, `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/users/${uid}`, "DELETE");
+  return { uid };
+}
+
+const ROUTES = { "/api/users/create": createUser, "/api/users/reset": resetPassword, "/api/users/delete": deleteUser };
 
 export default {
   async fetch(request, env) {
@@ -123,15 +134,15 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     try {
       const handler = ROUTES[new URL(request.url).pathname];
-      if (!handler || request.method !== "POST") throw new HttpError(404, "Khong tim thay");
-      if (!allowed.includes(origin)) throw new HttpError(403, "Origin khong duoc phep");
+      if (!handler || request.method !== "POST") throw new HttpError(404, "Không tìm thấy");
+      if (!allowed.includes(origin)) throw new HttpError(403, "Origin không được phép");
       const token = (request.headers.get("authorization") || "").replace(/^Bearer /, "");
       const claims = await verifyIdToken(token, env.PROJECT_ID);
-      if (claims.role !== "admin") throw new HttpError(403, "Chi admin duoc thuc hien");
-      return json(200, await handler(env, await request.json()));
+      if (claims.role !== "admin") throw new HttpError(403, "Chỉ admin được thực hiện");
+      return json(200, await handler(env, await request.json(), claims));
     } catch (e) {
       if (e instanceof HttpError) return json(e.status, { error: e.message });
-      return json(500, { error: "Loi may chu" });
+      return json(500, { error: "Lỗi máy chủ" });
     }
   },
 };

@@ -40,9 +40,9 @@ export function parseTime(v) {
   return m ? `${m[1].padStart(2, "0")}:${m[2]}` : "";
 }
 const num = (v) => { const n = Number(String(v ?? "").replace(/[^\d.]/g, "")); return Number.isFinite(n) && String(v ?? "").trim() !== "" ? n : null; };
-const titleCase = (s) => clean(s).toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
+export const titleCase = (s) => clean(s).toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
 
-function lev(a, b) {   // khoang cach Levenshtein nho de goi y "Kristea" ~ "Krishtea"
+export function lev(a, b) {   // khoang cach Levenshtein nho de goi y "Kristea" ~ "Krishtea"
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
   for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
@@ -177,4 +177,14 @@ export function buildWrites(parsed, opts) {
     students++;
   }
   return { writes, students, enrollments, newTeachers: newTeacher.size };
+}
+
+// Khop ten giao vien trong file (vd "Sir JULES ") voi giao vien da co: bo danh xung, so khop khong dau, cho phep sai 1 ky tu.
+export const teacherKey = (name) => normName(name).replace(/^(sir|ms|mr|mrs|miss|teacher|t)[.\s]+/, "");
+export function matchTeacher(name, teachers) {
+  const k = teacherKey(name);
+  const exact = teachers.find((t) => teacherKey(t.name) === k || normName(t.id) === k);
+  if (exact) return { id: exact.id, exact: true };
+  const near = k.length >= 5 ? teachers.find((t) => lev(teacherKey(t.name), k) <= 1) : null;
+  return near ? { id: near.id, exact: false } : null;
 }

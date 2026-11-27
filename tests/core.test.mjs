@@ -120,3 +120,33 @@ test("gop hai cach viet ten giao vien thanh mot giao vien moi", () => {
   assert.equal(new Set(ids).size, 1);
 });
 test("khong co tieu de", () => assert.ok(I.parseStudentList([["a", "b"]]).error));
+
+// ---------- lich tuan: gop khoang gio, nhap ClassSKD ----------
+import * as S from "../public/assets/schedule-import-core.js";
+test("lich tuan cua hoc vien: gop o lien tiep, nhieu giao vien", () => {
+  const all = { T1: { "1_2000": { t: "Minh Nghia" }, "1_2030": { t: "minh nghia" }, "3_2000": { t: "Minh Nghia" }, "3_2100": { t: "Minh Nghia" }, "4_2000": { t: "Minh Nghia", k: "na" } }, T2: { "1_0900": { t: "Lan, Minh Nghia" } } };
+  assert.deepEqual(G.slotsForName(all, "Minh Nghia"), [
+    { teacherId: "T2", day: 1, from: "09:00", to: "09:30" }, { teacherId: "T1", day: 1, from: "20:00", to: "21:00" },
+    { teacherId: "T1", day: 3, from: "20:00", to: "20:30" }, { teacherId: "T1", day: 3, from: "21:00", to: "21:30" }]);
+  assert.deepEqual(G.slotsForName(all, ""), []);
+});
+test("khop ten giao vien: bo danh xung, sai 1 ky tu", () => {
+  const ts = [{ id: "T1", name: "Alden" }, { id: "T2", name: "Krishtea" }, { id: "T3", name: "Jules" }];
+  assert.equal(I.matchTeacher("ALDEN ", ts).id, "T1"); assert.equal(I.matchTeacher("Sir JULES ", ts).id, "T3");
+  assert.deepEqual(I.matchTeacher("KRISTEA", ts), { id: "T2", exact: false }); assert.equal(I.matchTeacher("Nella", ts), null);
+});
+const time = (h, m = 0) => (h * 60 + m) / 1440;
+test("doc ClassSKD: khoi giao vien, mau o, gio ngoai luoi", () => {
+  const rows = [["", "Victoria"], ["VN Time", "PH Time", "Monday", "Tuesday"],
+    [time(7), time(8), "", ""], [time(8), time(9), "", "Nguyen Nha Uyen"], [time(8, 30), time(9, 30), "", "Nguyen Nha Uyen"], [time(2), time(3), "Dem", ""],
+    ["", "Sir JULES "], ["VN Time", "Phil time", "Monday"], [time(20), time(21), "Thanh Danh"], [time(20, 30), time(21, 30), ""]];
+  const fills = { "2,2": "980000", "3,3": "9FC5E8", "9,2": "FFFF00", "5,2": "F4CCCC" };
+  const p = S.parseClassSkd(rows, (r, c) => fills[`${r},${c}`] || "");
+  assert.equal(p.blocks.length, 2); assert.equal(p.dropped, 1);
+  const [v, j] = p.blocks;
+  assert.deepEqual(v.cells["0_0700"], { t: "", k: "na" }); assert.deepEqual(v.cells["1_0800"], { t: "Nguyen Nha Uyen" }); assert.equal(v.count, 2); assert.equal(v.marked, 1);
+  assert.equal(j.name, "Jules"); assert.equal(j.key, "jules"); assert.deepEqual(j.cells["0_2000"], { t: "Thanh Danh" }); assert.deepEqual(j.cells["0_2030"], { t: "", k: "res" });
+  const w = S.buildScheduleWrites(p.blocks, { teacherMap: { victoria: "T1", jules: "__new__" }, existingIds: ["T1", "T4"], existingCells: { T1: { "6_2330": { t: "Cu" } } }, overwrite: false });
+  assert.equal(w.newTeachers, 1); assert.equal(w.writes.find((x) => x.path === "teachers/T5").data.name, "Jules");
+  assert.ok(w.writes.find((x) => x.path === "schedule/T1").data.cells["6_2330"]); assert.ok(w.writes.find((x) => x.path === "schedule/T5"));
+});

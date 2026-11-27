@@ -28,6 +28,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (url === "https://oauth2.googleapis.com/token") return ok({ access_token: "ya29.fake" });
   if (url.endsWith("/accounts") ) return ok({ localId: "new-uid" });
   if (url.endsWith("/accounts:update")) return ok({ localId: "x" });
+  if (url.endsWith("/accounts:delete")) return JSON.parse(init.body).localId === "gone1234" ? new Response(JSON.stringify({ error: { message: "USER_NOT_FOUND" } }), { status: 400 }) : ok({});
   if (url.includes("/documents/users/")) return ok({});
   return new Response("{}", { status: 404 });
 };
@@ -69,4 +70,14 @@ test("validate dau vao", async () => {
   assert.equal((await call("/api/users/create", { username: "alden", password: "short", role: "teacher", teacherId: "T1" })).status, 400);
   assert.equal((await call("/api/users/create", { username: "alden", password: "tam-12345", role: "student" })).status, 400);
   assert.equal((await call("/api/users/create", { username: "alden", password: "tam-12345", role: "root" })).status, 400);
+});
+test("xoa tai khoan: xoa Auth + users doc, khong cho tu xoa, chap nhan tai khoan da mat", async () => {
+  calls.length = 0;
+  assert.equal((await call("/api/users/delete", { uid: "abc123xyz" })).status, 200);
+  assert.ok(calls.some((c) => c.url.endsWith("/accounts:delete") && JSON.parse(c.init.body).localId === "abc123xyz"));
+  assert.ok(calls.some((c) => c.url.endsWith("/documents/users/abc123xyz") && c.init.method === "DELETE"));
+  assert.equal((await call("/api/users/delete", { uid: "adminuid1" }, { token: idToken({ sub: "adminuid1" }) })).status, 400);
+  assert.equal((await call("/api/users/delete", { uid: "../x" })).status, 400);
+  assert.equal((await call("/api/users/delete", { uid: "gone1234" })).status, 200);
+  assert.equal((await call("/api/users/delete", { uid: "abc123xyz" }, { token: idToken({ role: "teacher" }) })).status, 403);
 });

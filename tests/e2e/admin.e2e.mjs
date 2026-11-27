@@ -263,6 +263,14 @@ await tp.goto("http://localhost:5173/app.html?week=2026-09-07"); await tp.waitFo
 ok(terrors.length === 0, "trang giao vien khong loi JS: " + terrors.join(" | "));
 await ctx2.close();
 
+await page.click("nav button[data-nav=payroll]"); await page.waitForSelector("#payMonth"); await page.fill("#payMonth", "2026-11"); await page.click("#payGo");
+await page.waitForSelector("tr[data-teacher=T2]", { timeout: 8000 });
+ok((await page.textContent("main")).includes("Tổng") && (await page.locator("#payCsv").count()) === 1, "tab Luong tinh duoc luong thang 11: " + (await page.textContent("main")).slice(0, 200));
+await page.click("nav button[data-nav=schedule]"); await page.waitForSelector("#rcBtn"); await page.click("#rcBtn"); await page.waitForSelector("#rcApply");
+ok((await page.textContent("dialog")).includes("Buổi hủy chưa học bù"), "hop thoai RC va hoc bu mo duoc");
+await page.click("#rcApply"); await page.waitForFunction(() => document.querySelector("dialog .msg")?.textContent.includes("Xong"), null, { timeout: 8000 });
+ok((await fdb.doc("sessions/ES112_2026-11-23").get()).data().rcNo === 1, "cap nhat so RC ghi vao buoi hoc");
+await page.click("dialog button.s:has-text('Đóng')");
 ok(errors.filter((e) => !/emulator|Failed to load resource/i.test(e)).length === 0, "khong co loi JS: " + errors.join(" | "));
 console.log("pass", pass);
 await browser.close(); server.close();

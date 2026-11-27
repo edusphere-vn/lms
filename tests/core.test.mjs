@@ -242,3 +242,19 @@ test("hoc bu: tim buoi huy chua bu, tao buoi bu co makeupOf va het cho sau khi c
   assert.equal(m.data.makeupOf, "c1"); assert.equal(m.data.minutes, 50); assert.deepEqual(m.data.scs, ["S1"]);
   assert.equal(RC.pendingMakeups([...ss, { id: m.id, ...m.data }]).length, 0);
 });
+
+import * as PY from "../public/assets/payroll-core.js";
+test("luong: 25p/50p, vang, huy, lop nhom, don gia rieng cua giao vien, ky thang", () => {
+  const cfg = { rate_25: { value: 100 }, rate_50: { value: 200 }, rate_absent_25: { value: 25 }, rate_absent_50: { value: 50 } };
+  const S = (id, minutes, att, extra = {}) => ({ id, date: "2026-11-05", time: "08:00", minutes, teacherId: "T1", scs: Object.keys(att), attendance: att, ...extra });
+  const rows = PY.computePayroll({ config: cfg, teachers: [{ id: "T1", name: "Alden" }], sessions: [
+    S("a", 25, { X: "Present" }), S("b", 50, { X: "Present" }), S("c", 25, { X: "Absent" }), S("d", 50, { X: "Absent" }),
+    S("e", 25, { X: "Cancelled" }), S("f", 50, { X: "Absent", Y: "Present" }), S("g", 25, { X: "" })] });
+  assert.equal(rows[0].total, 100 + 200 + 25 + 50 + 0 + 200 + 0);
+  assert.deepEqual([rows[0].present, rows[0].absent, rows[0].cancelled, rows[0].unreported], [3, 2, 1, 1]);
+  const r2 = PY.computePayroll({ config: cfg, teachers: [{ id: "T1", name: "A", rate25: 120 }], sessions: [S("a", 25, { X: "Present" }), S("b", 50, { X: "Present" })] });
+  assert.equal(r2[0].total, 320);                                   // 120 rieng + 200 chung
+  assert.deepEqual(PY.monthRange("2026-02"), { from: "2026-02-01", to: "2026-02-28" });
+  assert.deepEqual(PY.monthRange("2026-11"), { from: "2026-11-01", to: "2026-11-30" });
+  assert.ok(PY.payrollCsv(rows, "2026-11").includes("TỔNG"));
+});

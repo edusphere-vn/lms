@@ -1,6 +1,8 @@
 // Giao diện giáo viên: xem buổi học trong tuần, điểm danh và nhập báo cáo từng buổi.
-import { collection, getDocs, doc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
-import { DAYS } from "./grid-core.js";
+import { collection, getDocs, getDoc, doc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { DAYS, rowTime, hhmm, START_MIN, STEP } from "./grid-core.js";
+import { runsOf } from "./session-gen-core.js";
+import { computePayroll, monthRange } from "./payroll-core.js";
 
 const h = (tag, attrs = {}, ...kids) => {
   const el = document.createElement(tag);
@@ -22,6 +24,9 @@ export async function startTeacher({ db, profile, main, user }) {
   main.replaceChildren(h("p", {}, "Đang tải lịch..."));
   const step = (name, p) => p.catch((e) => { throw Object.assign(new Error(`${name}: ${e.code || e.message} (mã giáo viên ${tid})`), { code: e.code }); });
   const [sSnap, eSnap] = await Promise.all([step("học viên", getDocs(query(collection(db, "students"), where("teacherIds", "array-contains", tid)))), step("buổi học", getDocs(query(collection(db, "sessions"), where("teacherId", "==", tid))))]);
+  // lich co dinh hang tuan, don gia (de tinh luong tam) - khong bat buoc, loi thi bo qua
+  const [schedDoc, teacherDoc, cfgSnap] = await Promise.all([getDoc(doc(db, "schedule", tid)).catch(() => null), getDoc(doc(db, "teachers", tid)).catch(() => null), getDocs(collection(db, "config")).catch(() => ({ docs: [] }))]);
+  const cells = schedDoc?.data?.()?.cells || {}, config = Object.fromEntries(cfgSnap.docs.map((d) => [d.id, d.data()])), me = { id: tid, name: teacherDoc?.data?.()?.name || tid, ...(teacherDoc?.data?.() || {}) };
   const students = Object.fromEntries(sSnap.docs.map((d) => [d.id, d.data()]));
   const sessions = eSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const q = new URLSearchParams(location.search).get("week");   // ?week=2026-11-23 de mo thang tuan khac
@@ -32,6 +37,7 @@ export async function startTeacher({ db, profile, main, user }) {
     const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(week); d.setDate(d.getDate() + i); return iso(d); });
     const inWeek = sessions.filter((s) => s.date >= days[0] && s.date <= days[6]);
     main.replaceChildren(...[
+      overview(days),
       h("div", { class: "weekbar" },
         h("button", { class: "s", id: "prevWeek", onclick: () => { week.setDate(week.getDate() - 7); paint(); } }, "← Tuần trước"),
         h("strong", { id: "weekLabel" }, `${dm(days[0])} - ${dm(days[6])}/${days[6].slice(0, 4)}`),
@@ -42,6 +48,16 @@ export async function startTeacher({ db, profile, main, user }) {
         const list = inWeek.filter((s) => s.date === d).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
         return list.length ? h("section", {}, h("h3", {}, `${DAYS[i]}, ${dm(d)}`), list.map(card)) : null;
       }) : h("p", { class: "empty" }, "Tuần này chưa có buổi học nào. Admin sẽ tạo buổi học từ lịch.")].flat(Infinity).filter(Boolean));
+  }
+
+  const names = (scs) => scs.map((sc) => students[sc]?.fullName || sc).join(", ");
+  function overview(days) {
+    const runs = runsOf(cells), ym = days[0].slice(0, 7), { from, to } = monthRange(ym);
+    const pay = computePayroll({ sessions: sessions.filter((x) => x.date >= from && x.date <= to), teachers: [me], config })[0];
+    return h("div", { class: "overview" },
+      h("details", { id: "fixedSchedule" }, h("summary", {}, `Lịch cố định hằng tuần (${runs.length} ca)`),
+        h("table", {}, h("tbody", {}, DAYS.map((d, c) => { const r = runs.filter((x) => x.col === c).sort((a, b) => a.row - b.row); return r.length ? h("tr", {}, h("td", {}, h("strong", {}, d)), h("td", {}, r.map((x) => `${rowTime(x.row)}-${hhmm(START_MIN + (x.row + x.rows) * STEP)} ${x.text}`).join(" · "))) : null; })))),
+      h("p", { class: "note", id: "payHint" }, pay ? `Tạm tính tháng ${ym.slice(5)}/${ym.slice(0, 4)}: ${pay.total.toLocaleString("vi-VN")} (${pay.present} buổi có mặt, ${pay.absent} vắng, ${pay.cancelled} hủy` + (pay.unreported ? `, ${pay.unreported} chưa điểm danh` : "") + "). Số chính thức do admin chốt cuối kỳ." : `Tháng ${ym.slice(5)}/${ym.slice(0, 4)} chưa có buổi học.`));
   }
 
   function card(s) {

@@ -254,6 +254,7 @@ await tp.goto("http://localhost:5173/index.html"); await tp.fill("#username", "t
 await tp.waitForURL("**/app.html**"); await tp.goto("http://localhost:5173/app.html?week=2026-11-23"); await tp.waitForSelector("article.session", { timeout: 8000 }).catch(async () => { console.log("TEACHER FAIL:", await tp.textContent("main"), terrors.join(" | ")); process.exit(2); });
 ok((await tp.textContent("#weekLabel")).startsWith("23/11") && (await tp.textContent("article.session")).includes("Pham Thanh Thuy B") && (await tp.textContent("article.session")).includes("08:00-08:50"), "giao vien thay buoi cua minh: " + await tp.textContent("main"));
 ok((await tp.locator("article.session").count()) === 1, "chi thay buoi cua minh trong tuan");
+ok((await tp.textContent("#fixedSchedule")).includes("Lịch cố định") && (await tp.textContent("#payHint")).includes("Tạm tính"), "giao vien thay lich co dinh va luong tam tinh: " + (await tp.textContent("#payHint")));
 await tp.selectOption("article.session select", "Present"); await tp.fill("textarea[data-f=topic]", "OXFORD 1"); await tp.fill("textarea[data-f=lesson]", "<i>Unit 1</i>"); await tp.fill("textarea[data-f=feedback]", "Tot");
 await tp.click("article.session button.p"); await tp.waitForSelector("article.session.done");
 const rep = (await fdb.doc("sessions/ES112_2026-11-23").get()).data();
@@ -275,6 +276,11 @@ ok((await sp.textContent("section.report")).includes("ES112") && (await sp.textC
 ok(serrors.length === 0, "trang hoc vien khong loi JS: " + serrors.join(" | "));
 await ctx3.close();
 
+await page.click("nav button[data-nav=sessions]"); await page.waitForSelector("#seLoad"); await page.fill("#seFrom", "2026-11-23"); await page.fill("#seTo", "2026-11-29"); await page.click("#seLoad");
+await page.waitForSelector("tr[data-session]", { timeout: 8000 });
+ok((await page.locator("tr[data-session]").count()) >= 1, "tab Buoi hoc liet ke buoi trong tuan");
+await page.selectOption("#seTeacher", "T2"); ok((await page.locator("tr[data-session]").count()) >= 1, "loc theo giao vien T2 con buoi cua T2");
+await page.fill("#seStudent", "zzzz"); ok((await page.locator("tr[data-session]").count()) === 0, "loc theo ten hoc vien");
 await page.click("nav button[data-nav=payroll]"); await page.waitForSelector("#payMonth"); await page.fill("#payMonth", "2026-11"); await page.click("#payGo");
 await page.waitForSelector("tr[data-teacher=T2]", { timeout: 8000 });
 ok((await page.textContent("main")).includes("Tổng") && (await page.locator("#payCsv").count()) === 1, "tab Luong tinh duoc luong thang 11: " + (await page.textContent("main")).slice(0, 200));

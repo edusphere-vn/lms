@@ -1,5 +1,5 @@
 // Giao diện học viên và agency: xem báo cáo (buổi học đã học, nhận xét, đánh giá cuối RC). Chỉ đọc.
-import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { collection, getDocs, getDoc, doc, query, where } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { buildReport } from "./report-core.js";
 
 const h = (tag, attrs = {}, ...kids) => {
@@ -11,13 +11,16 @@ const h = (tag, attrs = {}, ...kids) => {
 const dmy = (s) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : "");
 const docs = async (q) => (await getDocs(q)).docs.map((d) => ({ id: d.id, ...d.data() }));
 
-function reportView(sc, name, sessions, evaluations, enrollments) {
+function reportView(sc, name, sessions, evaluations, enrollments, meetLink = "") {
   const r = buildReport({ sc, sessions, evaluations }), enr = enrollments.filter((e) => e.sc === sc).sort((a, b) => (b.startDate || "").localeCompare(a.startDate || ""));
+  const today = new Date(), todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const upcoming = sessions.filter((x) => (x.scs || []).includes(sc) && x.date >= todayIso && !["Present", "Absent", "Cancelled"].includes(x.attendance?.[sc])).map((x) => ({ ...x, meetLink })).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || ""))).slice(0, 14);
   return h("section", { class: "report", "data-sc": sc },
     h("h2", {}, name || sc), h("p", { class: "note" }, `Mã ${sc}`),
     h("p", {}, h("strong", {}, `RC${r.rcNo}`), `: ${r.inRc}/10 buổi. Tổng ${r.counted} buổi đã học (${r.present} có mặt, ${r.absent} vắng).`),
     enr.length ? h("p", { class: "note" }, "Gói học: " + enr.map((e) => `${e.courseId || ""} ${e.startDate || ""}${e.endDate ? " - " + e.endDate : ""}${e.status ? " (" + e.status + ")" : ""}`).join("; ")) : null,
     r.evaluations.length ? [h("h3", {}, "Đánh giá"), h("div", { class: "wrap" }, h("table", {}, h("tbody", {}, r.evaluations.map((e) => h("tr", {}, h("td", {}, e.kind || `Exam ${e.rcNo}`), h("td", {}, dmy(e.date)), h("td", {}, Object.entries(e.scores || {}).map(([k, v]) => `${k}: ${v}`).join(", ")), h("td", {}, e.level || ""))))))] : null,
+    upcoming.length ? [h("h3", {}, "Lịch sắp học"), h("div", { class: "wrap", id: "upcoming" }, h("table", {}, h("tbody", {}, upcoming.map((u) => h("tr", {}, h("td", {}, dmy(u.date)), h("td", {}, `${u.time || ""}${u.minutes ? " (" + u.minutes + "p)" : ""}`), h("td", {}, u.makeupOf ? "Học bù" : ""), h("td", {}, u.meetLink ? h("a", { href: u.meetLink, target: "_blank", rel: "noopener noreferrer" }, "Vào lớp") : ""))))))] : null,
     h("h3", {}, "Các buổi học"),
     r.items.length ? r.items.map((s) => h("article", { class: "session" },
       h("header", {}, h("strong", {}, `${dmy(s.date)}${s.time ? " " + s.time : ""}`), s.rcInfo ? h("span", { class: "tag" }, `RC${s.rcInfo.no} · buổi ${s.rcInfo.seq}`) : null, h("span", { class: "note" }, s.status === "Absent" ? "Vắng" : "Có mặt")),
@@ -33,7 +36,8 @@ export async function startStudent({ db, user, profile, main }) {
     docs(query(collection(db, "sessions"), where("scs", "array-contains", sc))),
     docs(query(collection(db, "evaluations"), where("sc", "==", sc), where("status", "==", "Approved"))),
     docs(query(collection(db, "enrollments"), where("sc", "==", sc)))]);
-  main.replaceChildren(reportView(sc, profile.displayName, sessions, evaluations, enrollments));
+  const me = (await getDoc(doc(db, "students", sc)).catch(() => null))?.data?.() || {};
+  main.replaceChildren(reportView(sc, me.fullName || profile.displayName, sessions, evaluations, enrollments, me.meetLink || ""));
 }
 
 export async function startAgency({ db, user, profile, main }) {
@@ -47,6 +51,6 @@ export async function startAgency({ db, user, profile, main }) {
     docs(query(collection(db, "enrollments"), where("agencyId", "==", agencyId)))]);
   students.sort((a, b) => (a.fullName || a.id).localeCompare(b.fullName || b.id));
   const box = h("div", {}), sel = h("select", { id: "agStudent" }, h("option", { value: "" }, "— Chọn học viên —"), students.map((s) => h("option", { value: s.id }, `${s.fullName || s.id} (${s.id})`)));
-  sel.onchange = () => { const s = students.find((x) => x.id === sel.value); box.replaceChildren(...(s ? [reportView(s.id, s.fullName, sessions, evaluations, enrollments)] : [])); };
+  sel.onchange = () => { const s = students.find((x) => x.id === sel.value); box.replaceChildren(...(s ? [reportView(s.id, s.fullName, sessions, evaluations, enrollments, s.meetLink || "")] : [])); };
   main.replaceChildren(h("h2", {}, profile.displayName || agencyId), h("p", { class: "note" }, `${students.length} học viên`), sel, box);
 }

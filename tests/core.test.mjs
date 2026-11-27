@@ -267,3 +267,14 @@ test("bao cao hoc vien: an buoi huy, dem 10 buoi/RC, moi nhat truoc, danh gia cu
   assert.equal(r.counted, 11); assert.equal(r.items[0].id, "s11"); assert.ok(!r.items.some((s) => s.id === "s2"));
   assert.deepEqual([r.rcNo, r.inRc], [2, 1]); assert.equal(r.evaluations.length, 1);
 });
+
+import * as SF from "../public/assets/sessions-filter.js";
+test("loc buoi hoc: theo giao vien, ten hoc vien khong dau, trang thai", () => {
+  const ss = [{ id: "1", date: "2026-01-02", teacherId: "T1", scs: ["A"], attendance: { A: "Present" } }, { id: "2", date: "2026-01-01", teacherId: "T2", scs: ["B"], attendance: {} }];
+  const names = { A: "Đào Hữu", B: "Lê Văn" }, o = { names, normName: G.normName };
+  assert.deepEqual(SF.filterSessions(ss, {}, o).map((s) => s.id), ["2", "1"]);
+  assert.deepEqual(SF.filterSessions(ss, { teacherId: "T1" }, o).map((s) => s.id), ["1"]);
+  assert.deepEqual(SF.filterSessions(ss, { student: "dao huu" }, o).map((s) => s.id), ["1"]);
+  assert.deepEqual(SF.filterSessions(ss, { status: "none" }, o).map((s) => s.id), ["2"]);
+  assert.equal(SF.sessionStatus(ss[0]), "Present");
+});

@@ -6,6 +6,7 @@ import { renderSchedule, leaveSchedule } from "./schedule.js";
 import { openImport } from "./import-students.js";
 import { renderReports } from "./reports-import.js";
 import { renderPayroll } from "./payroll.js";
+import { renderSessions } from "./sessions-admin.js";
 import { slotsForName, DAYS } from "./grid-core.js";
 
 // ---------- helper DOM (luon dung textContent, khong chen HTML tu du lieu) ----------
@@ -72,9 +73,10 @@ async function render() {
   const my = ++renderSeq, ent = ENTITIES[current];
   const main = $("main"); main.replaceChildren();
   leaveSchedule();
-  $("nav").replaceChildren(...[...Object.entries(ENTITIES), ["schedule", { title: "Lịch giáo viên" }], ["payroll", { title: "Lương" }], ["reports", { title: "Nhập báo cáo" }], ["settings", { title: "Cài đặt" }]].map(([key, e]) =>
+  $("nav").replaceChildren(...[...Object.entries(ENTITIES), ["schedule", { title: "Lịch giáo viên" }], ["sessions", { title: "Buổi học" }], ["payroll", { title: "Lương" }], ["reports", { title: "Nhập báo cáo" }], ["settings", { title: "Cài đặt" }]].map(([key, e]) =>
     h("button", { "aria-current": String(key === current), "data-nav": key, onclick: () => { current = key; render(); } }, e.title)));
   if (current === "settings") return renderSettings(main);
+  if (current === "sessions") return renderSessions(main, { db, h, alive: () => my === renderSeq });
   if (current === "payroll") return renderPayroll(main, { db, h, alive: () => my === renderSeq });
   if (current === "reports") return renderReports(main, { db, h, alive: () => my === renderSeq });
   if (current === "schedule") return renderSchedule(main, { db, h, dlg, reload: render, alive: () => my === renderSeq });

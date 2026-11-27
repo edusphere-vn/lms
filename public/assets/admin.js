@@ -268,7 +268,17 @@ function renderSettings(main) {
         e.target.disabled = true; msg.className = "msg"; msg.textContent = "Đang nạp...";
         try { msg.className = "msg ok"; msg.textContent = `Đã thêm ${await seedDefaults()} mục mới.`; }
         catch (err) { msg.className = "msg err"; msg.textContent = "Lỗi: " + (err.code || err.message); }
-        e.target.disabled = false; } }, "Nạp dữ liệu mặc định"), msg));
+        e.target.disabled = false; } }, "Nạp dữ liệu mặc định"), msg),
+    h("div", { class: "wrap", style: "padding:16px;margin-top:12px" },
+      h("p", {}, "Tải về một file JSON chứa toàn bộ dữ liệu (học viên, gói học, buổi học, đánh giá, lịch...) để cất giữ. Không gồm mật khẩu. Sao lưu tự động mỗi đêm ra Google Sheet: xem docs/HUONG_DAN_SAO_LUU.md."),
+      h("button", { class: "s", id: "backupBtn", onclick: async (e) => {
+        e.target.disabled = true; msg.className = "msg"; msg.textContent = "Đang đọc dữ liệu...";
+        try {
+          const out = {}; for (const c of ["teachers", "students", "agencies", "courses", "enrollments", "billing", "schedule", "sessions", "evaluations", "config"]) out[c] = Object.fromEntries((await getDocs(collection(db, c))).docs.map((d) => [d.id, d.data()]));
+          const a = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(out)], { type: "application/json" })), download: `lms-backup-${new Date().toISOString().slice(0, 10)}.json` }); document.body.append(a); a.click(); a.remove();
+          msg.className = "msg ok"; msg.textContent = "Đã tải bản sao lưu.";
+        } catch (err) { msg.className = "msg err"; msg.textContent = "Lỗi: " + (err.code || err.message); }
+        e.target.disabled = false; } }, "Tải bản sao lưu (JSON)")));
 }
 async function seedDefaults() {
   const plan = [["config", CONFIG], ["courses", COURSES], ["rubrics", RUBRICS]];

@@ -14,10 +14,14 @@ const dm = (s) => `${s.slice(8)}/${s.slice(5, 7)}`;
 const endTime = (t, min) => { const m = Number(t.slice(0, 2)) * 60 + Number(t.slice(3)) + min; return `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
 const STATUSES = [["", "Chưa điểm danh"], ["Present", "Có mặt (Present)"], ["Absent", "Vắng (Absent)"], ["Cancelled", "Hủy, sẽ học bù (Cancelled)"]];
 
-export async function startTeacher({ db, profile, main }) {
-  const tid = profile.teacherId;
+export async function startTeacher({ db, profile, main, user }) {
+  // Ma giao vien lay tu quyen (claim) trong token, vi luat Firestore cung doc tu do
+  const claims = user ? (await user.getIdTokenResult()).claims : {}, tid = claims.teacherId || profile.teacherId;
+  if (user && (claims.role !== "teacher" || !claims.teacherId)) throw new Error("Tài khoản chưa có quyền giáo viên (thiếu claim). Nhờ admin bấm Đặt lại mật khẩu hoặc tạo lại tài khoản.");
+  if (claims.teacherId && profile.teacherId && claims.teacherId !== profile.teacherId) throw new Error(`Mã giáo viên của tài khoản không khớp (${claims.teacherId} và ${profile.teacherId}). Nhờ admin tạo lại tài khoản.`);
   main.replaceChildren(h("p", {}, "Đang tải lịch..."));
-  const [sSnap, eSnap] = await Promise.all([getDocs(query(collection(db, "students"), where("teacherIds", "array-contains", tid))), getDocs(query(collection(db, "sessions"), where("teacherId", "==", tid)))]);
+  const step = (name, p) => p.catch((e) => { throw Object.assign(new Error(`${name}: ${e.code || e.message} (mã giáo viên ${tid})`), { code: e.code }); });
+  const [sSnap, eSnap] = await Promise.all([step("học viên", getDocs(query(collection(db, "students"), where("teacherIds", "array-contains", tid)))), step("buổi học", getDocs(query(collection(db, "sessions"), where("teacherId", "==", tid))))]);
   const students = Object.fromEntries(sSnap.docs.map((d) => [d.id, d.data()]));
   const sessions = eSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const q = new URLSearchParams(location.search).get("week");   // ?week=2026-11-23 de mo thang tuan khac
